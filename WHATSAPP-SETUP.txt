@@ -1,0 +1,105 @@
+BY NASTASIJA · AUTOMATIC WHATSAPP MESSAGES TO CLIENTS
+=====================================================
+When this is switched on, clients get these WhatsApp messages from Nastasija's
+business number automatically, with no tapping:
+
+  1. Deposit request     straight after they reserve a treatment (with bank details)
+  2. Consultation booked straight after they book a free consultation call
+  3. Booking confirmed   when she marks the booking "Deposit paid" in her dashboard
+  4. Reminder            the day before the appointment (treatments with deposit paid, and consultations)
+
+Until it's switched on, everything keeps working with the one tap buttons.
+
+
+WHAT IT NEEDS
+WhatsApp only allows automatic business messages through the official
+WhatsApp Business Platform (run by Meta). That needs:
+- A Meta Business account, verified with the UAE trade licence and the owner's Emirates ID
+  (verification usually takes a few working days).
+- A WhatsApp provider ("Business Solution Provider") to connect the number.
+  Choose one that supports COEXISTENCE: this lets Nastasija keep using her normal
+  WhatsApp Business app on 052 908 6773, with all her chats, while the website also
+  sends messages from the same number. (She must open the app at least every 13 days.)
+- The 4 message templates below, approved by Meta (usually within a day).
+
+COST
+Meta charges per message. Booking messages are "utility" messages; in the UAE these cost
+roughly AED 0.04 to 0.06 each (check the current rate with the provider). For example,
+100 bookings a month with about 3 messages each is roughly AED 12 to 18 a month,
+plus whatever the provider charges for its plan.
+
+
+STEP 1 · Pick a provider and connect the number
+Pick a Meta partner that offers coexistence and gives you API access. Two set ups work
+with this website without changes:
+  a) Meta's own Cloud API (through Meta Business Suite / developers.facebook.com):
+     you get a PHONE NUMBER ID and a permanent ACCESS TOKEN.
+  b) 360dialog: you get an API KEY.
+Follow the provider's sign up. It will ask you to scan a QR code with the WhatsApp
+Business app on Nastasija's phone to link the number (that's the coexistence step).
+
+STEP 2 · Create the 4 templates
+In the provider's dashboard (or WhatsApp Manager), create these templates.
+Category: UTILITY. Language: English. Copy the names and text exactly;
+{{1}} {{2}} etc. are filled in automatically.
+
+  Name: deposit_request
+  Text:
+    Hi {{1}}, thank you for temporarily reserving your treatment slot with By Nastasija.
+
+    Treatment: {{2}}
+    Date: {{3}}
+
+    Please pay a 50% deposit of {{4}} AED to:
+    {{5}}
+    Reference: {{6}}
+
+    Your slot is held for 24 hours until the deposit is received. Please reply here with your receipt once paid.
+  Sample values: Sara · Lip Blush · Thursday 8 October 2026 at 10:00 · 600 · Account name Nastasija · IBAN AE00 0000 0000 0000 · BN-12AB34
+
+  Name: consultation_booked
+  Text:
+    Hi {{1}}, thank you for booking your {{2}} with By Nastasija on {{3}}. If you can, reply with a few photos taken in daylight before the call. See you soon, Nastasija
+  Sample values: Nina · free video call · Friday 9 October 2026 at 19:00
+
+  Name: booking_confirmed
+  Text:
+    Hi {{1}}, your deposit has been received and your {{2}} on {{3}} is confirmed. See you soon, Nastasija
+  Sample values: Sara · Lip Blush · Thursday 8 October 2026 at 10:00
+
+  Name: appointment_reminder
+  Text:
+    Hi {{1}}, a friendly reminder of your {{2}} with By Nastasija {{3}}. If you need to change it, please reply here.
+  Sample values: Sara · Lip Blush · tomorrow at 10:00
+
+Wait until all 4 show as "Approved".
+
+STEP 3 · Add the details to the booking system
+In Google Apps Script, in Code.gs, find WA_API in SETTINGS and fill in:
+
+  Meta Cloud API:
+    URL:    'https://graph.facebook.com/v21.0/PHONE_NUMBER_ID/messages'   (put her phone number ID in place of PHONE_NUMBER_ID)
+    HEADER: 'Authorization'
+    TOKEN:  'Bearer ACCESS_TOKEN'                                          (the word Bearer, a space, then the token)
+
+  360dialog:
+    URL:    'https://waba-v2.360dialog.io/messages'
+    HEADER: 'D360-API-KEY'
+    TOKEN:  'API_KEY'
+
+Then:
+1. Save, and run setup() once more (this also switches on the daily reminders at 10:00).
+2. Deploy > Manage deployments > edit (pencil) > Version: New version > Deploy.
+   The website link stays the same.
+
+STEP 4 · Test
+Book a test treatment on the website with your own mobile number. Within seconds you
+should get the deposit request on WhatsApp, and Nastasija's email will say
+"Deposit message sent to the client automatically".
+In the dashboard, mark it Deposit paid: you get the confirmation message.
+Then cancel the test booking.
+
+IF A MESSAGE DOESN'T SEND
+Nothing breaks: Nastasija's email simply shows the one tap "Send deposit message"
+button as before. In Apps Script, "Executions" shows the reason (usually a template
+name that doesn't match, a template not approved yet, or an expired token).

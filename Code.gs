@@ -27,6 +27,18 @@ const SETTINGS = {
   CONSULT_MIN: 20,
   DEPOSIT_PERCENT: 50,
   HOLD_HOURS: 24,
+  WHATSAPP_ALERT_KEY: '',
+  /* Automatic WhatsApp messages to clients (WhatsApp Business Platform). Leave TOKEN empty to keep one tap sending.
+     Meta Cloud API:  URL 'https://graph.facebook.com/v21.0/<PHONE_NUMBER_ID>/messages', HEADER 'Authorization', TOKEN 'Bearer <token>'
+     360dialog:       URL 'https://waba-v2.360dialog.io/messages', HEADER 'D360-API-KEY', TOKEN '<api key>' */
+  WA_API: {
+    URL: '',
+    HEADER: 'Authorization',
+    TOKEN: '',
+    LANGUAGE: 'en',
+    TEMPLATES: { deposit: 'deposit_request', consult: 'consultation_booked', confirmed: 'booking_confirmed', reminder: 'appointment_reminder' },
+    REMINDER_HOUR: 10                      // reminders for tomorrow's appointments go out at this hour each day
+  },                  // optional: CallMeBot key so she also gets a WhatsApp alert for each booking (see guide)
   ADMIN_PASSWORD: '',                      // type her dashboard password here, run setup(), then clear it again
   SESSION_DAYS: 30,                        // how long she stays logged in on a device
   BANK: {                                  // ADD HER BANK DETAILS HERE
@@ -100,6 +112,8 @@ function setup() {
 
   ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === 'onSheetEdit') ScriptApp.deleteTrigger(t); });
   ScriptApp.newTrigger('onSheetEdit').forSpreadsheet(ss).onEdit().create();
+  ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === 'sendReminders') ScriptApp.deleteTrigger(t); });
+  ScriptApp.newTrigger('sendReminders').timeBased().everyDays(1).atHour(SETTINGS.WA_API.REMINDER_HOUR).inTimezone(SETTINGS.TIMEZONE).create();
 
   Logger.log('Setup done. Your bookings sheet: ' + ss.getUrl());
 }
@@ -208,12 +222,17 @@ function book_(d) {
     '=HYPERLINK("' + waLink.replace(/"/g, '""') + '","Send on WhatsApp")', ev.getId()]);
   upsertClient_(phone, name, email, d.date);
 
+  const waSent = sendTemplate_(phone, 'deposit', [name.split(' ')[0], svc.name + (addonNames ? ' + ' + addonNames : ''), pretty_(start), deposit, bankLine_(), ref]);
   notifyOwner_('New booking: ' + svc.name + ' · ' + name + ' · ' + pretty_(start), [
+    ['WhatsApp', waSent ? 'Deposit message sent to the client automatically' : 'Not sent yet: tap the button below'],
     ['Reference', ref], ['Status', 'Reserved, awaiting deposit'], ['Treatment', svc.name + (addonNames ? ' + ' + addonNames : '')],
     ['When', pretty_(start) + ' to ' + fmt_(end, 'HH:mm')], ['Client', name], ['Phone', '+' + phone], ['Email', email || 'none'],
     ['Total', total + ' AED'], ['50% deposit', deposit + ' AED'], ['Notes', notes || 'none'],
     ['Client type', d.returning ? 'Returning' : 'New'], ['History', (history.html || 'No previous bookings')]
-  ], [{ label: 'Send deposit message on WhatsApp', url: waLink }]);
+  ], [{ label: waSent ? 'Message client on WhatsApp' : 'Send deposit message on WhatsApp', url: waSent ? 'https://wa.me/' + phone : waLink }]);
+
+  alertWhatsApp_((waSent ? 'Deposit message sent automatically.\n' : '') + 'New booking ' + ref + '\n' + svc.name + (addonNames ? ' + ' + addonNames : '') + '\n' + pretty_(start) +
+    '\n' + name + ' +' + phone + '\nDeposit due: ' + deposit + ' AED\n\nSend deposit message: ' + waLink);
 
   if (email) {
     MailApp.sendEmail({
@@ -262,10 +281,24 @@ function consult_(d) {
     safe_(email), safe_(d.topic), safe_(d.message), '=HYPERLINK("' + waLink.replace(/"/g, '""') + '","Confirm on WhatsApp")', ev.getId()]);
   upsertClient_(phone, name, email, null);
 
+  const waSent = sendTemplate_(phone, 'consult', [name.split(' ')[0], 'free ' + type.toLowerCase(), pretty_(start)]);
   notifyOwner_('New free consultation: ' + name + ' · ' + pretty_(start), [
-    ['Reference', ref], ['Type', type], ['When', pretty_(start)], ['Client', name], ['Phone', '+' + phone],
+    ['WhatsApp', waSent ? 'Confirmation sent to the client automatically' : 'Not sent yet: tap the button below'], ['Reference', ref], ['Type', type], ['When', pretty_(start)], ['Client', name], ['Phone', '+' + phone],
     ['Email', email || 'none'], ['Interested in', clean_(d.topic)], ['Concerns', clean_(d.message) || 'none']
   ], [{ label: 'Confirm on WhatsApp', url: waLink }]);
+  alertWhatsApp_('New free consultation ' + ref + '\n' + type + ' · ' + pretty_(start) + '\n' + name + ' +' + phone +
+    '\nInterested in: ' + clean_(d.topic) + '\n\nConfirm with client: ' + waLink);
+  if (email) {
+    MailApp.sendEmail({
+      to: email, name: SETTINGS.BUSINESS, replyTo: SETTINGS.OWNER_EMAIL,
+      subject: 'Your free consultation is booked · ' + pretty_(start),
+      htmlBody: wrap_('<p>Hi ' + escape_(name.split(' ')[0]) + ',</p><p>Thank you for booking your free 20 minute ' + escape_(type.toLowerCase()) +
+        ' with ' + SETTINGS.BUSINESS + ' on <b>' + escape_(pretty_(start)) + '</b>.</p><p>' +
+        (type === 'Video call' ? 'Nastasija will send you the video link on WhatsApp shortly before the call.' : 'Nastasija will call you on +' + phone + '.') +
+        '</p><p>If you can, have a few photos of your skin, brows or lips ready, taken in daylight.</p>' +
+        '<p>Need to change the time? Message Nastasija on WhatsApp: <a href="https://wa.me/' + SETTINGS.OWNER_WHATSAPP + '">+' + SETTINGS.OWNER_WHATSAPP + '</a></p>')
+    });
+  }
   return { ok: true, ref: ref };
 }
 
@@ -275,6 +308,7 @@ function contact_(d) {
   notifyOwner_('Website message: ' + clean_(d.subject) + ' · ' + clean_(d.name), [
     ['From', clean_(d.name)], ['Phone', d.phone ? '+' + normPhone_(d.phone) : 'none'], ['Email', clean_(d.email) || 'none'], ['Message', clean_(d.message)]
   ], d.phone ? [{ label: 'Reply on WhatsApp', url: 'https://wa.me/' + normPhone_(d.phone) }] : []);
+  alertWhatsApp_('New website message from ' + clean_(d.name) + (d.phone ? ' +' + normPhone_(d.phone) : '') + '\n' + clean_(d.subject) + ': ' + clean_(d.message).slice(0, 500));
   return { ok: true };
 }
 
@@ -334,7 +368,10 @@ function applyStatus_(name, row, status) {
     const ev = r[16] ? cal_().getEventById(r[16]) : null;
     if (ev) {
       const base = r[6] + ' · ' + r[8];
-      if (status === 'Deposit paid') { ev.setTitle('CONFIRMED · ' + base); ev.setColor(CalendarApp.EventColor.GREEN); }
+      if (status === 'Deposit paid') {
+        ev.setTitle('CONFIRMED · ' + base); ev.setColor(CalendarApp.EventColor.GREEN);
+        sendTemplate_(normPhone_(r[9]), 'confirmed', [String(r[8]).split(' ')[0], r[6], pretty_(ev.getStartTime())]);
+      }
       else if (status === BOOKING_STATUSES[0]) { ev.setTitle('RESERVED · ' + base); ev.setColor(CalendarApp.EventColor.YELLOW); }
       else if (status === 'Completed') { ev.setTitle('DONE · ' + base); ev.setColor(CalendarApp.EventColor.GRAY); }
       else if (status === 'No show') { ev.setTitle('NO SHOW · ' + base); ev.setColor(CalendarApp.EventColor.RED); }
@@ -450,6 +487,51 @@ function cell_(v, key) {
 function hash_(s) {
   return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, 'bynastasija:' + s, Utilities.Charset.UTF_8)
     .map(function (b) { return ('0' + (b & 255).toString(16)).slice(-2); }).join('');
+}
+
+/* ===================== automatic WhatsApp to clients (optional) ===================== */
+function waEnabled_() { return !!(SETTINGS.WA_API.URL && SETTINGS.WA_API.TOKEN); }
+function bankLine_() {
+  const b = SETTINGS.BANK;
+  return [['Account name', b.accountName], ['Bank', b.bank], ['IBAN', b.iban], ['Account no.', b.accountNumber]]
+    .filter(function (r) { return r[1]; }).map(function (r) { return r[0] + ' ' + r[1]; }).join(' · ') || 'Nastasija will send the bank details';
+}
+function sendTemplate_(phone, key, params) {
+  if (!waEnabled_()) return false;
+  const W = SETTINGS.WA_API, headers = {};
+  headers[W.HEADER] = W.TOKEN;
+  const body = {
+    messaging_product: 'whatsapp', recipient_type: 'individual', to: String(phone), type: 'template',
+    template: { name: W.TEMPLATES[key], language: { code: W.LANGUAGE },
+      components: [{ type: 'body', parameters: params.map(function (t) { return { type: 'text', text: String(t).replace(/[\n\t]+/g, ' ').replace(/ {4,}/g, ' ').slice(0, 900) }; }) }] }
+  };
+  try {
+    const res = UrlFetchApp.fetch(W.URL, { method: 'post', contentType: 'application/json', headers: headers, payload: JSON.stringify(body), muteHttpExceptions: true });
+    const ok = res.getResponseCode() < 300;
+    if (!ok) console.error('WhatsApp send failed (' + key + '): ' + res.getContentText());
+    return ok;
+  } catch (err) { console.error('WhatsApp send failed (' + key + ')', err); return false; }
+}
+function sendReminders() {
+  if (!waEnabled_()) return;
+  const tz = SETTINGS.TIMEZONE, tomorrow = fmt_(new Date(Date.now() + 864e5), 'yyyy-MM-dd');
+  ss_().getSheetByName('Bookings').getDataRange().getValues().slice(1).forEach(function (r) {
+    if (dstr_(r[3]) !== tomorrow || r[2] !== 'Deposit paid') return;
+    sendTemplate_(normPhone_(r[9]), 'reminder', [String(r[8]).split(' ')[0], r[6], 'tomorrow at ' + (r[4] instanceof Date ? fmt_(r[4], 'HH:mm') : r[4])]);
+  });
+  ss_().getSheetByName('Consultations').getDataRange().getValues().slice(1).forEach(function (r) {
+    if (dstr_(r[3]) !== tomorrow || r[2] === 'Cancelled' || r[2] === 'Done') return;
+    sendTemplate_(normPhone_(r[7]), 'reminder', [String(r[6]).split(' ')[0], 'free ' + String(r[5]).toLowerCase(), 'tomorrow at ' + (r[4] instanceof Date ? fmt_(r[4], 'HH:mm') : r[4])]);
+  });
+}
+
+/* ===================== WhatsApp alert to Nastasija (optional) ===================== */
+function alertWhatsApp_(text) {
+  if (!SETTINGS.WHATSAPP_ALERT_KEY) return;
+  try {
+    UrlFetchApp.fetch('https://api.callmebot.com/whatsapp.php?phone=' + SETTINGS.OWNER_WHATSAPP +
+      '&text=' + encodeURIComponent(text) + '&apikey=' + encodeURIComponent(SETTINGS.WHATSAPP_ALERT_KEY), { muteHttpExceptions: true });
+  } catch (err) { console.error('WhatsApp alert failed', err); }
 }
 
 /* ===================== helpers ===================== */

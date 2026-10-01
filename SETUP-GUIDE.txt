@@ -29,7 +29,9 @@ WHAT YOU GET
 - An email to skinbynastasija@gmail.com for every new booking, with a button that
   opens WhatsApp with the "please pay your 50% deposit" message already written
   (including the bank details) for that client. One tap to send.
-- An automatic confirmation email to the client with the bank details (if they gave an email).
+- An automatic email to the client: for treatments, the reservation with the bank details
+  (if they gave an email); for consultations, a booking confirmation.
+- Optional: a WhatsApp alert on Nastasija's own phone for every booking (see STEP 1b).
 - The website calendar only shows free times: it reads her Google Calendar, leaves
   10 minutes between clients and keeps 13:00 to 14:00 free for lunch.
   Anything she adds to her calendar herself (holidays, personal plans) also blocks those times.
@@ -44,6 +46,17 @@ STEP 1 · Create the script
    Type her dashboard password in ADMIN_PASSWORD (between the quotes). Use something long.
    Check OPEN, CLOSE, OPEN_DAYS and LUNCH match her hours.
 6. Click the save icon.
+
+STEP 1b · WhatsApp alerts for Nastasija (optional, free)
+Emails always arrive. If she also wants a WhatsApp ping on her own phone for every
+new booking, consultation and message:
+1. On her phone, save +34 684 728 023 as a contact (CallMeBot).
+2. Send it this WhatsApp message:  I allow callmebot to send me messages
+3. Within a couple of minutes it replies with an API key (a number).
+4. Paste that number into WHATSAPP_ALERT_KEY in SETTINGS (between the quotes) and save.
+Note: CallMeBot is a free third party service meant for messages to your own number.
+It's fine for her own alerts, but it isn't an official WhatsApp product, so the email
+stays the main notification. Leave the key empty to switch the alerts off.
 
 STEP 2 · Run setup once
 1. In the function menu at the top (next to "Debug"), choose "setup" and click "Run".
@@ -114,7 +127,8 @@ IF YOU CHANGE THE CODE LATER
 Deploy > Manage deployments > edit (pencil) > Version: New version > Deploy.
 The URL stays the same, so the website doesn't need changing.
 
-FULLY AUTOMATIC WHATSAPP (optional, later)
-Right now the deposit message is sent by Nastasija with one tap. Sending it with no tap
-at all needs the paid WhatsApp Business Platform (Meta approval, a message template and a
-small fee per message). It can be added to this script later if she wants it.
+FULLY AUTOMATIC WHATSAPP TO CLIENTS
+The booking system can send the deposit request, consultation confirmation, booking
+confirmation and a day before reminder to clients on WhatsApp automatically.
+It needs the official WhatsApp Business Platform: see WHATSAPP-SETUP.txt.
+Until that's connected, the one tap buttons keep working.
