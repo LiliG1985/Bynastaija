@@ -18,6 +18,7 @@ const SETTINGS = {
   BUSINESS: 'By Nastasija',
   OWNER_EMAIL: 'skinbynastasija@gmail.com',
   OWNER_WHATSAPP: '971529086773',
+  SITE_URL: 'https://bynastasija.com',     // used for the consultation form link
   TIMEZONE: 'Asia/Dubai',
   OPEN: '10:00',
   CLOSE: '19:00',
@@ -81,10 +82,24 @@ const HEAD = {
   Bookings: ['Ref', 'Created', 'Status', 'Date', 'Start', 'End', 'Treatment', 'Add ons', 'Name', 'Phone', 'Email',
              'Total (AED)', '50% deposit (AED)', 'Notes', 'Client type', 'Send deposit message', 'Calendar event id'],
   Consultations: ['Ref', 'Created', 'Status', 'Date', 'Time', 'Type', 'Name', 'Phone', 'Email', 'Interested in',
-                  'Concerns', 'WhatsApp client', 'Calendar event id'],
+                  'Concerns', 'WhatsApp client', 'Calendar event id', 'Form'],
   Clients: ['Phone', 'Name', 'Email', 'First contact', 'Last booking', 'Completed visits', 'Bookings', 'Treatment history', 'Private notes'],
-  Messages: ['Received', 'Name', 'Phone', 'Email', 'Subject', 'Message']
+  Messages: ['Received', 'Name', 'Phone', 'Email', 'Subject', 'Message'],
+  'Consultation forms': ['Form id', 'Received', 'Consult ref', 'Name', 'Phone', 'Email', 'Needs attention', 'Answers', 'Signature']
 };
+/* finds a tab, creating it with its headings if it isn't there yet (so new tabs appear without running setup again) */
+function sheet_(name) {
+  const book = ss_();
+  let sh = book.getSheetByName(name);
+  if (!sh) {
+    sh = book.insertSheet(name); sh.appendRow(HEAD[name]); sh.setFrozenRows(1);
+    sh.getRange(1, 1, 1, HEAD[name].length).setFontWeight('bold').setBackground('#EFE6DD');
+  } else if (sh.getLastColumn() < HEAD[name].length) {
+    sh.getRange(1, 1, 1, HEAD[name].length).setValues([HEAD[name]]).setFontWeight('bold').setBackground('#EFE6DD');
+  }
+  return sh;
+}
+function formLink_() { return SETTINGS.SITE_URL.replace(/\/$/, '') + '/#form'; }
 
 /* ===================== one time setup ===================== */
 function setup() {
@@ -147,6 +162,7 @@ function doPost(e) {
     if (data.action === 'book') return json_(book_(data));
     if (data.action === 'consult') return json_(consult_(data));
     if (data.action === 'contact') return json_(contact_(data));
+    if (data.action === 'intake') return json_(intake_(data));
     if (data.action === 'login') return json_(login_(data.password));
     if (String(data.action).indexOf('admin_') === 0) {
       if (!checkSession_(data.token)) return json_({ ok: false, error: 'auth', message: 'Please log in again.' });
@@ -206,7 +222,7 @@ function book_(d) {
   const depositMsg = depositMessage_(name, svc.name, start, deposit, ref, email);
   const waLink = 'https://wa.me/' + phone + '?text=' + encodeURIComponent(depositMsg);
 
-  const ev = cal_().createEvent('RESERVED · ' + svc.name + ' · ' + name, start, end, {
+  const ev = cal_().createEvent('AWAITING DEPOSIT · ' + svc.name + ' · ' + name, start, end, {
     location: '+' + phone + (email ? ' · ' + email : ''),
     description: [
       'Status: Reserved, awaiting ' + deposit + ' AED deposit',
@@ -274,19 +290,21 @@ function consult_(d) {
   const name = clean_(d.name), email = clean_(d.email), type = clean_(d.type) || 'Call';
   const msg = 'Hi ' + name.split(' ')[0] + ', thank you for booking your free ' + type.toLowerCase() + ' with ' + SETTINGS.BUSINESS +
     ' on ' + pretty_(start) + '. ' + (type === 'Video call' ? 'I will send you the video link here shortly before. ' : 'I will call you on this number. ') +
+    'Before the call, please complete your consultation form: ' + formLink_() + ' ' +
     'If you can, send a few photos taken in daylight beforehand. ' +
     (email ? 'A confirmation has also been emailed to you; if you can\'t see it, please check your spam or junk folder. ' : '') + 'See you soon, Nastasija';
   const waLink = 'https://wa.me/' + phone + '?text=' + encodeURIComponent(msg);
 
+  sheet_('Consultations');
   const ev = cal_().createEvent('CONSULT ' + type.toUpperCase() + ' · ' + name, start, end, {
     location: '+' + phone + (email ? ' · ' + email : ''),
     description: ['Ref: ' + ref, 'Client: ' + name, 'Phone: +' + phone, 'Email: ' + (email || 'none'),
-      'Interested in: ' + clean_(d.topic), 'Concerns: ' + (clean_(d.message) || 'none'), '', 'Confirm on WhatsApp: ' + waLink].join('\n')
+      'Interested in: ' + clean_(d.topic), 'Concerns: ' + (clean_(d.message) || 'none'), 'Consultation form: not received yet', '', 'Confirm on WhatsApp: ' + waLink].join('\n')
   });
   ev.setColor(CalendarApp.EventColor.PALE_BLUE);
 
   ss_().getSheetByName('Consultations').appendRow([ref, new Date(), CONSULT_STATUSES[0], "'" + d.date, "'" + d.time, type, safe_(name), "'+" + phone,
-    safe_(email), safe_(d.topic), safe_(d.message), '=HYPERLINK("' + waLink.replace(/"/g, '""') + '","Confirm on WhatsApp")', ev.getId()]);
+    safe_(email), safe_(d.topic), safe_(d.message), '=HYPERLINK("' + waLink.replace(/"/g, '""') + '","Confirm on WhatsApp")', ev.getId(), 'Not yet']);
   upsertClient_(phone, name, email, null);
 
   const waSent = sendTemplate_(phone, 'consult', [name.split(' ')[0], 'free ' + type.toLowerCase(), pretty_(start)]);
@@ -303,11 +321,90 @@ function consult_(d) {
       htmlBody: wrap_('<p>Hi ' + escape_(name.split(' ')[0]) + ',</p><p>Thank you for booking your free 20 minute ' + escape_(type.toLowerCase()) +
         ' with ' + SETTINGS.BUSINESS + ' on <b>' + escape_(pretty_(start)) + '</b>.</p><p>' +
         (type === 'Video call' ? 'Nastasija will send you the video link on WhatsApp shortly before the call.' : 'Nastasija will call you on +' + phone + '.') +
-        '</p><p>If you can, have a few photos of your skin, brows or lips ready, taken in daylight.</p>' +
+        '</p><p><b>Before your call, please complete your consultation form.</b> It takes about 10 minutes and helps Nastasija prepare for your call.</p>' +
+        '<p><a href="' + formLink_() + '" style="display:inline-block;background:#C6A47B;color:#171615;text-decoration:none;padding:12px 18px;font-size:13px;letter-spacing:1px">Complete my consultation form</a></p>' +
+        '<p>If you can, have a few photos of your skin, brows or lips ready, taken in daylight.</p>' +
         '<p>Need to change the time? Message Nastasija on WhatsApp: <a href="https://wa.me/' + SETTINGS.OWNER_WHATSAPP + '">+' + SETTINGS.OWNER_WHATSAPP + '</a></p>')
     });
   }
   return { ok: true, ref: ref };
+}
+
+/* ===================== consultation form (before the free call) ===================== */
+function intake_(d) {
+  const phone = normPhone_(d.phone), name = clean_(d.name), email = clean_(d.email);
+  if (phone.length < 11 || !name) return { ok: false, message: 'Please add your name and mobile number.' };
+  const answers = (Array.isArray(d.answers) ? d.answers : []).slice(0, 120).map(function (a) {
+    return [clean_(a[0]).slice(0, 120), clean_(a[1]).slice(0, 120), clean_(a[2]).slice(0, 300), clean_(a[3]).slice(0, 1500)];
+  });
+  const attention = (Array.isArray(d.attention) ? d.attention : []).slice(0, 40).map(function (x) { return clean_(x).slice(0, 120); });
+  let sig = String(d.signature || '');
+  if (!/^data:image\/(jpeg|png);base64,[A-Za-z0-9+\/=]+$/.test(sig) || sig.length > 45000) sig = '';
+  let json = JSON.stringify(answers);
+  if (json.length > 48000) json = json.slice(0, 48000);
+
+  // match the client's consultation: the reference from the website, or their latest one
+  const csh = sheet_('Consultations');
+  const rows = csh.getDataRange().getValues();
+  let row = -1;
+  for (let i = rows.length - 1; i >= 1; i--) {
+    if (normPhone_(rows[i][7]) !== phone) continue;
+    if (d.ref && String(rows[i][0]) === String(d.ref)) { row = i + 1; break; }
+    if (row < 0) row = i + 1;
+  }
+  const consultRef = row > 0 ? String(rows[row - 1][0]) : '';
+  const id = 'FM-' + Utilities.getUuid().slice(0, 6).toUpperCase();
+  const now = new Date();
+  sheet_('Consultation forms').appendRow([id, now, consultRef, safe_(name), "'+" + phone, safe_(email), attention.join(', ') || 'None', json, sig]);
+
+  let when = '';
+  if (row > 0) {
+    csh.getRange(row, 14).setValue('Received ' + fmt_(now, 'd MMM yyyy HH:mm'));
+    const evId = rows[row - 1][12];
+    const ev = evId ? cal_().getEventById(evId) : null;
+    if (ev) {
+      when = pretty_(ev.getStartTime());
+      const line = 'Consultation form: RECEIVED ' + fmt_(now, 'd MMM HH:mm') + (attention.length ? ' · Needs attention: ' + attention.join(', ') : '');
+      const desc = String(ev.getDescription() || '');
+      ev.setDescription(/^Consultation form: .*$/m.test(desc) ? desc.replace(/^Consultation form: .*$/m, line) : desc + '\n' + line);
+    }
+  }
+  upsertClient_(phone, name, email, null);
+
+  // email Nastasija the full form
+  let html = '<p style="font-size:15px"><b>' + escape_(name) + '</b> has completed the consultation form' +
+    (when ? ' for the call on <b>' + escape_(when) + '</b>' : '') + '.</p>' +
+    '<p style="font-size:14px">Phone: +' + phone + (email ? ' · ' + escape_(email) : '') + (consultRef ? ' · Consultation ' + consultRef : '') + '</p>';
+  html += attention.length
+    ? '<div style="background:#F6E3DF;border-left:3px solid #9A3B34;padding:12px 16px;margin:16px 0"><b style="color:#9A3B34">Needs your attention</b><br>' + attention.map(escape_).join('<br>') + '</div>'
+    : '<div style="background:#EFE6DD;padding:12px 16px;margin:16px 0">Nothing flagged in the screening questions.</div>';
+  let lastSec = '', lastGrp = '';
+  answers.forEach(function (a) {
+    if (a[0] !== lastSec) { html += '<h3 style="font-family:Georgia,serif;font-weight:normal;font-size:18px;margin:26px 0 6px;border-bottom:1px solid #E3D7CC;padding-bottom:6px">' + escape_(a[0]) + '</h3>'; lastSec = a[0]; lastGrp = ''; }
+    if (a[1] !== lastGrp) { html += '<p style="font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#9E7C52;margin:14px 0 4px">' + escape_(a[1]) + '</p>'; lastGrp = a[1]; }
+    html += '<p style="font-size:14px;margin:0 0 8px"><span style="color:#7A6A5E">' + escape_(a[2]) + '</span><br>' + (a[3] ? escape_(a[3]).replace(/\n/g, '<br>') : '<span style="color:#A99484">Not answered</span>') + '</p>';
+  });
+  const opts = { to: SETTINGS.OWNER_EMAIL, name: 'By Nastasija website', replyTo: email || SETTINGS.OWNER_EMAIL,
+    subject: (attention.length ? '⚠ ' : '') + 'Consultation form: ' + name + (when ? ' · call ' + when : '') };
+  if (sig) {
+    const m = sig.match(/^data:(image\/\w+);base64,(.*)$/);
+    opts.inlineImages = { sig: Utilities.newBlob(Utilities.base64Decode(m[2]), m[1], 'signature') };
+    html += '<p style="font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#9E7C52;margin:20px 0 4px">Signature</p><img src="cid:sig" width="300" height="85" style="border:1px solid #E3D7CC;background:#fff">';
+  }
+  html += '<p style="font-size:12px;color:#7A6A5E;margin-top:18px">Signed online ' + escape_(fmt_(now, 'd MMMM yyyy HH:mm')) + ' · Form ' + id + '. Also saved in your Studio dashboard and the "Consultation forms" tab.</p>';
+  opts.htmlBody = wrap_(html);
+  MailApp.sendEmail(opts);
+  alertWhatsApp_('Consultation form received from ' + name + ' +' + phone + (attention.length ? '\nNeeds attention: ' + attention.join(', ') : ''));
+  return { ok: true, id: id };
+}
+function formById_(id) {
+  const vals = sheet_('Consultation forms').getDataRange().getValues();
+  for (let i = vals.length - 1; i >= 1; i--) if (String(vals[i][0]) === String(id)) {
+    let answers = []; try { answers = JSON.parse(vals[i][7]); } catch (e) {}
+    return { ok: true, form: { id: vals[i][0], received: cell_(vals[i][1], 'Received'), ref: vals[i][2], name: vals[i][3], phone: vals[i][4], email: vals[i][5],
+      attention: vals[i][6], answers: answers, signature: String(vals[i][8] || '') } };
+  }
+  return { ok: false, message: 'Form not found' };
 }
 
 /* ===================== messages ===================== */
@@ -369,7 +466,7 @@ function onSheetEdit(e) {
   if (row < 2 || e.range.getColumn() !== 3) return;
   applyStatus_(sh.getName(), row, e.range.getValue());
 }
-function applyStatus_(name, row, status) {
+function applyStatus_(name, row, status, quiet) {
   const sh = ss_().getSheetByName(name);
   if (name === 'Bookings') {
     const r = sh.getRange(row, 1, 1, HEAD.Bookings.length).getValues()[0];
@@ -377,11 +474,11 @@ function applyStatus_(name, row, status) {
     if (ev) {
       const base = r[6] + ' · ' + r[8];
       if (status === 'Deposit paid') {
-        ev.setTitle('CONFIRMED · ' + base); ev.setColor(CalendarApp.EventColor.GREEN);
-        sendTemplate_(normPhone_(r[9]), 'confirmed', [String(r[8]).split(' ')[0], r[6], pretty_(ev.getStartTime())]);
+        ev.setTitle('DEPOSIT PAID ✓ · ' + base); ev.setColor(CalendarApp.EventColor.GREEN);
+        if (!quiet && normPhone_(r[9]).length >= 11) sendTemplate_(normPhone_(r[9]), 'confirmed', [String(r[8]).split(' ')[0], r[6], pretty_(ev.getStartTime())]);
       }
-      else if (status === BOOKING_STATUSES[0]) { ev.setTitle('RESERVED · ' + base); ev.setColor(CalendarApp.EventColor.YELLOW); }
-      else if (status === 'Completed') { ev.setTitle('DONE · ' + base); ev.setColor(CalendarApp.EventColor.GRAY); }
+      else if (status === BOOKING_STATUSES[0]) { ev.setTitle('AWAITING DEPOSIT · ' + base); ev.setColor(CalendarApp.EventColor.YELLOW); }
+      else if (status === 'Completed') { ev.setTitle('DONE ✓ · ' + base); ev.setColor(CalendarApp.EventColor.GRAY); }
       else if (status === 'No show') { ev.setTitle('NO SHOW · ' + base); ev.setColor(CalendarApp.EventColor.RED); }
       else if (status === 'Cancelled') { ev.deleteEvent(); sh.getRange(row, 17).setValue(''); }
       if (status !== 'Cancelled') ev.setDescription(String(ev.getDescription()).replace(/^Status: .*$/m, 'Status: ' + status));
@@ -398,6 +495,49 @@ function applyStatus_(name, row, status) {
       else if (status === 'Reserved') ev.setColor(CalendarApp.EventColor.PALE_BLUE);
     }
   }
+}
+
+/* ===================== appointments Nastasija adds herself ===================== */
+function adminBook_(d) {
+  const svc = SERVICES[d.service];
+  const tname = svc ? svc.name : clean_(d.customName).slice(0, 120);
+  if (!tname) return { ok: false, message: 'Please choose or type the treatment.' };
+  const name = clean_(d.name), email = clean_(d.email), notes = clean_(d.notes);
+  if (!name) return { ok: false, message: 'Please add the client\'s name.' };
+  const phone = d.phone ? normPhone_(d.phone) : '';
+  if (phone && phone.length < 11) return { ok: false, message: 'Please check the mobile number, or leave it empty.' };
+  const status = BOOKING_STATUSES.indexOf(d.status) >= 0 ? d.status : BOOKING_STATUSES[0];
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(d.date)) || !/^\d{2}:\d{2}$/.test(String(d.time))) return { ok: false, message: 'Please add the date and time.' };
+  const addons = (d.addons || []).filter(function (k) { return ADDONS[k]; });
+  const addonNames = addons.map(function (k) { return ADDONS[k].name; }).join(', ');
+  const mins = Math.max(5, Math.min(720, Number(d.mins) || (svc ? svc.mins : 60)));
+  const total = Math.max(0, Number(d.price) || 0);
+  const deposit = Math.round(total * SETTINGS.DEPOSIT_PERCENT / 100);
+  const start = Utilities.parseDate(d.date + ' ' + d.time, SETTINGS.TIMEZONE, 'yyyy-MM-dd HH:mm');
+  const end = new Date(start.getTime() + mins * 60000);
+  if (!d.force && status !== 'Cancelled') {
+    const clash = cal_().getEvents(start, end).filter(function (ev) { return !ev.isAllDayEvent(); });
+    if (clash.length) return { ok: false, error: 'clash', message: 'This overlaps with ' + clash.map(function (ev) { return ev.getTitle() + ' (' + fmt_(ev.getStartTime(), 'HH:mm') + ' to ' + fmt_(ev.getEndTime(), 'HH:mm') + ')'; }).join(', ') + '.' };
+  }
+  const ref = 'BN-' + Utilities.getUuid().slice(0, 6).toUpperCase();
+  const treatment = tname + (addonNames ? ' + ' + addonNames : '');
+  let evId = '';
+  if (status !== 'Cancelled') {
+    const ev = cal_().createEvent('AWAITING DEPOSIT · ' + tname + ' · ' + name, start, end, {
+      location: phone ? '+' + phone + (email ? ' · ' + email : '') : (email || ''),
+      description: ['Status: ' + BOOKING_STATUSES[0], 'Ref: ' + ref, 'Added by Nastasija', 'Client: ' + name, 'Phone: ' + (phone ? '+' + phone : 'none'),
+        'Email: ' + (email || 'none'), 'Treatment: ' + treatment, 'Total: ' + total + ' AED · 50% deposit: ' + deposit + ' AED', 'Notes: ' + (notes || 'none')].join('\n')
+    });
+    ev.setColor(CalendarApp.EventColor.YELLOW);
+    evId = ev.getId();
+  }
+  const sh = ss_().getSheetByName('Bookings');
+  sh.appendRow([ref, new Date(), BOOKING_STATUSES[0], "'" + d.date, "'" + d.time, "'" + fmt_(end, 'HH:mm'), safe_(tname), addonNames, safe_(name),
+    phone ? "'+" + phone : '', safe_(email), total, deposit, safe_(notes), 'Added by Nastasija', '', evId]);
+  const row = sh.getLastRow();
+  if (phone) upsertClient_(phone, name, email, d.date);
+  if (status !== BOOKING_STATUSES[0]) { sh.getRange(row, 3).setValue(status); applyStatus_('Bookings', row, status, true); }
+  return { ok: true, ref: ref, end: fmt_(end, 'HH:mm'), deposit: deposit };
 }
 
 /* ===================== studio dashboard (login + data) ===================== */
@@ -429,6 +569,8 @@ function checkSession_(token) {
 function admin_(d) {
   const a = d.action;
   if (a === 'admin_data') return { ok: true, data: dashboardData_(), bookingStatuses: BOOKING_STATUSES, consultStatuses: CONSULT_STATUSES };
+  if (a === 'admin_form') return formById_(d.id);
+  if (a === 'admin_book') return adminBook_(d);
   if (a === 'admin_logout') { PropertiesService.getScriptProperties().deleteProperty('sess_' + hash_(String(d.token))); return { ok: true }; }
   if (a === 'admin_status') {
     const name = d.kind === 'consult' ? 'Consultations' : 'Bookings';
@@ -471,7 +613,7 @@ function findRowByRef_(name, ref) {
 function dashboardData_() {
   const book = ss_();
   const read = function (name) {
-    const vals = book.getSheetByName(name).getDataRange().getValues();
+    const vals = sheet_(name).getDataRange().getValues();
     const keys = HEAD[name];
     return vals.slice(1).filter(function (r) { return r.join('') !== ''; }).map(function (r) {
       const o = {}; keys.forEach(function (k, i) { o[k] = cell_(r[i], k); }); return o;
@@ -480,7 +622,8 @@ function dashboardData_() {
   const blocked = cal_().getEvents(new Date(Date.now() - 864e5), new Date(Date.now() + 120 * 864e5))
     .filter(function (ev) { return /^BLOCKED/.test(ev.getTitle()); })
     .map(function (ev) { return { title: ev.getTitle().replace(/^BLOCKED · /, ''), start: fmt_(ev.getStartTime(), 'yyyy-MM-dd HH:mm'), end: fmt_(ev.getEndTime(), 'yyyy-MM-dd HH:mm') }; });
-  return { bookings: read('Bookings'), consultations: read('Consultations'), clients: read('Clients'), messages: read('Messages'), blocked: blocked,
+  const forms = read('Consultation forms').map(function (f) { return { id: f['Form id'], received: f.Received, ref: f['Consult ref'], name: f.Name, phone: f.Phone, attention: f['Needs attention'] }; });
+  return { bookings: read('Bookings'), consultations: read('Consultations'), clients: read('Clients'), messages: read('Messages'), forms: forms, blocked: blocked,
            bank: SETTINGS.BANK, sheetUrl: book.getUrl() };
 }
 function cell_(v, key) {
