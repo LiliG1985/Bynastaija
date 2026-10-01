@@ -56,17 +56,20 @@ const SERVICES = {
   'circadia':      { name: 'Customised Circadia Treatment', mins: 90, price: 700 },
   'oxygen':        { name: 'Cocoa+ Oxygen Facial', mins: 90, price: 650 },
   'biorepeel':     { name: 'BioRePeel', mins: 90, price: 650 },
-  'nuqy':          { name: 'NUQY Bio Microneedling', mins: 90, price: 700 },
-  'mn-salmon':     { name: 'Microneedling with Salmon DNA & Exosomes', mins: 90, price: 700 },
-  'mn-exo':        { name: 'Microneedling with PHformula Biomimetic Exosomes', mins: 90, price: 900 },
-  'mn-stem':       { name: 'Microneedling with Stem Cells', mins: 90, price: 900 },
-  'mn-biorepeel':  { name: 'Microneedling with BioRePeel', mins: 90, price: 700 },
+  'nuqy':          { name: 'MEOKDA Sponge Peel', mins: 90, price: 700 },
+  'mn-hyla':       { name: 'Dermapen 4 with Hyla Active', mins: 90, price: 850 },
+  'mn-salmon':     { name: 'Dermapen 4 with Salmon & Peptides Skin Booster', mins: 90, price: 900 },
+  'mn-exo':        { name: 'Dermapen 4 with Pure Exosomes', mins: 90, price: 1000 },
+  'mn-stem':       { name: 'Dermapen 4 with Stem Cells', mins: 90, price: 900 },
+  'mn-biorepeel':  { name: 'Dermapen 4 with BioRePeel', mins: 90, price: 900 },
   'lip-blush':     { name: 'Lip Blush', mins: 150, price: 1200 },
   'brows':         { name: 'Eyebrows (PMU)', mins: 120, price: 1200 },
-  'top-up':        { name: 'SPMU Top Up', mins: 90, price: 400 },
-  'brow-lam':      { name: 'Brow Lamination', mins: 45, price: 250 }
+  'top-up':       { name: 'SPMU Top Up', mins: 90, price: 400 },
+  'top-up-12':    { name: 'SPMU Top Up after 12 months', mins: 90, price: 900 },
+  'top-up-24':    { name: 'SPMU Top Up after 16 to 24 months', mins: 90, price: 1000 }
 };
 const ADDONS = {
+  lashlift: { name: 'Lash lift', mins: 45, price: 200 },
   browtint: { name: 'Brow tint', mins: 10, price: 50 },
   bothtint: { name: 'Brow tint and lash tint', mins: 15, price: 80 }
 };
@@ -252,7 +255,8 @@ function depositMessage_(name, treatment, start, deposit, ref, email) {
     .filter(function (r) { return r[1]; }).map(function (r) { return r[0] + ': ' + r[1]; }).join('\n');
   return 'Hi ' + name.split(' ')[0] + ', thank you for temporarily reserving your treatment slot with ' + SETTINGS.BUSINESS + '.\n\n' +
     treatment + '\n' + pretty_(start) + '\n\n' +
-    'Please pay a 50% deposit of ' + deposit + ' AED to:\n' + (lines || '[bank details]') + '\nReference: ' + ref + '\n\n' +
+    (lines ? 'Please pay a 50% deposit of ' + deposit + ' AED to:\n' + lines + '\nReference: ' + ref + '\n\n'
+           : 'To confirm, a 50% deposit of ' + deposit + ' AED is needed. Nastasija will send you the bank details here on WhatsApp.\nReference: ' + ref + '\n\n') +
     'Your slot is held for ' + SETTINGS.HOLD_HOURS + ' hours until the deposit is received. Please send your receipt here once paid.' +
     (email ? '\n\nWe have also emailed you these details. If you can\'t see the email, please check your spam or junk folder.' : '');
 }
