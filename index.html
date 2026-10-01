@@ -1250,7 +1250,12 @@ $("#bkReserve").onclick=async()=>{
       }
       ref=r.ref;
     }
-  }catch(e){ /* backend unreachable: WhatsApp still works */ }
+  }catch(e){
+    btn.disabled=false; btn.textContent="Reserve my slot";
+    const msg=`Hi Nastasija, I'd like to book ${bk.svc.name} on ${dateLong(bk.date)} at ${bk.time}. Name: ${data.name}.`;
+    $("#resErr").innerHTML=`We couldn’t reserve your slot online just now. Please try again in a moment, or <a href="${wa(CONFIG.whatsapp,msg)}" target="_blank" rel="noopener">book with Nastasija on WhatsApp</a>.`;
+    return;
+  }
   btn.disabled=false; btn.textContent="Reserve my slot";
   $("#bkRef").textContent=ref; $("#bkRef2").textContent=ref;
   $("#bkMsg").textContent=depositMessage(ref);
@@ -1308,7 +1313,11 @@ $("#csForm").addEventListener("submit",async e=>{
   const btn=$("#csSubmit"); btn.disabled=true; btn.textContent="Reserving";
   const data={type:csType(),date:ymd(cs.date),time:cs.time,name:n,phone:normPhone(p),email:em,topic:$("#cs-topic").value,message:$("#cs-msg").value.trim(),website:$("#cs-web").value};
   let ref=localRef("BC-");
-  try{ const r=await api("consult",data); if(r){ if(!r.ok){ btn.disabled=false; btn.textContent="Reserve consultation"; $("#csErr").textContent=r.error==="taken"?"Sorry, that time has just been taken. Please pick another.":(r.message||"Something went wrong. Please try again."); if(r.error==="taken") loadBusy(); return; } ref=r.ref; } }catch(e){}
+  try{ const r=await api("consult",data); if(r){ if(!r.ok){ btn.disabled=false; btn.textContent="Reserve consultation"; $("#csErr").textContent=r.error==="taken"?"Sorry, that time has just been taken. Please pick another.":(r.message||"Something went wrong. Please try again."); if(r.error==="taken") loadBusy(); return; } ref=r.ref; } }catch(e){
+    btn.disabled=false; btn.textContent="Reserve consultation";
+    $("#csErr").innerHTML=`We couldn’t reserve your call online just now. Please try again in a moment, or <a href="${wa(CONFIG.whatsapp,`Hi Nastasija, I'd like a free consultation on ${dateLong(cs.date)} at ${cs.time}. Name: ${n}.`)}" target="_blank" rel="noopener">message Nastasija on WhatsApp</a>.`;
+    return;
+  }
   btn.disabled=false; btn.textContent="Reserve consultation";
   $("#csRef").textContent=ref;
   $("#csDoneText").textContent=`${n}, your free ${csType().toLowerCase()} is reserved for ${dateLong(cs.date)} at ${cs.time}.`;
