@@ -441,6 +441,30 @@ body.no-wa footer{padding-bottom:0}
 @media (max-width:600px){.wa-float .bubble{width:52px;height:52px}.wa-float .lbl{display:none}}
 body.no-wa .wa-float{display:none}
 
+
+/* yearly calendar (dashboard) */
+.yr-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+.yr-nav{display:flex;align-items:center;gap:10px}
+.yr-nav button{background:var(--white);border:1px solid var(--line);width:38px;height:38px;cursor:pointer;font-size:1rem;color:var(--ink)}
+.yr-nav strong{font-family:var(--serif);font-weight:400;font-size:1.5rem;min-width:70px;text-align:center}
+.yr-legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:.72rem;color:var(--muted)}
+.yr-legend i{display:inline-block;width:12px;height:12px;border:1px solid var(--line);vertical-align:-2px;margin-right:5px}
+.yr-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px}
+.yr-m{scroll-margin-top:100px;background:var(--white);border:1px solid var(--line);padding:12px}
+.yr-m h4{font:500 .62rem var(--sans);letter-spacing:.22em;text-transform:uppercase;margin:0 0 8px;color:var(--champagne-d)}
+.yr-d{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
+.yr-d span.w{font-size:.55rem;text-align:center;color:var(--taupe);letter-spacing:.06em}
+.yr-d button{position:relative;aspect-ratio:1;border:1px solid transparent;background:var(--white);font:400 .72rem var(--sans);color:var(--ink);cursor:pointer;padding:0;min-width:0}
+.yr-d button.free{background:#F3F8F1;border-color:#DCE9D6}
+.yr-d button.part{background:#F6E9D8;border-color:#E9D2B4}
+.yr-d button.full{background:#EBC9B9;border-color:#DDB09B}
+.yr-d button.blocked{background:repeating-linear-gradient(135deg,#EFE6DD 0 4px,#E3D7CC 4px 8px)}
+.yr-d button.closed,.yr-d button.past{background:var(--porcelain);color:var(--cashmere)}
+.yr-d button.today{outline:2px solid var(--champagne-d);outline-offset:-1px;font-weight:600}
+.yr-d button.has::after{content:"";position:absolute;left:50%;bottom:2px;width:4px;height:4px;margin-left:-2px;border-radius:50%;background:var(--champagne-d)}
+.yr-d button:hover{border-color:var(--champagne-d)}
+.yr-free{display:flex;flex-wrap:wrap;gap:6px}
+.yr-free span{background:#F3F8F1;border:1px solid #DCE9D6;padding:6px 10px;font-size:.82rem}
 /* consultation form */
 #fmSteps{grid-template-columns:repeat(6,1fr)}
 #fmTop,#csForm{scroll-margin-top:96px}
@@ -937,6 +961,7 @@ body.no-wa .wa-float{display:none}
       <div class="tiles" id="admTiles"></div>
       <div class="tabs" role="tablist" id="admTabs">
         <button role="tab" data-tab="agenda" aria-selected="true">Diary</button>
+        <button role="tab" data-tab="year">Calendar</button>
         <button role="tab" data-tab="bookings">Bookings</button>
         <button role="tab" data-tab="clients">Clients</button>
         <button role="tab" data-tab="consults">Consultations</button>
@@ -1509,7 +1534,7 @@ function admRender(){
     const base=b.textContent.replace(/\d+$/,"").trim(); const c=counts[b.dataset.tab];
     b.innerHTML=esc(base)+(c?`<span class="ct">${c}</span>`:"");
   });
-  ({agenda:renderAgenda,bookings:renderBookings,clients:renderClients,consults:renderConsults,messages:renderMessages,block:renderBlock})[ADM.tab]();
+  ({agenda:renderAgenda,year:renderYear,bookings:renderBookings,clients:renderClients,consults:renderConsults,messages:renderMessages,block:renderBlock})[ADM.tab]();
 }
 
 function bookingItem(b){
@@ -1586,6 +1611,94 @@ function renderBlock(){
     if(r&&r.ok){ D.blocked=(D.blocked||[]).concat([{title:p.title||"Not available",start:p.date+" "+p.from,end:p.dateTo+" "+p.to}]); renderBlock(); admSay(ADM.demo?"Demo: blocked time added (not saved).":"Time blocked. It’s now unavailable on the website."); busy.push([new Date(p.date+"T"+p.from),new Date(p.dateTo+"T"+p.to)]); }
     else $("#blkMsg").textContent=(r&&r.message)||"Couldn't save. Please try again.";
   };
+}
+
+
+/* ================= dashboard: yearly calendar ================= */
+ADM.year=new Date().getFullYear(); ADM.yearBusy={};
+const MONTHS=["January","February","March","April","May","June","July","August","September","October","November","December"];
+function admItemsByDay(){
+  const D=ADM.data, m={};
+  const add=(d,x)=>{ (m[d]=m[d]||[]).push(x); };
+  D.bookings.forEach(b=>{ if(b.Status!=="Cancelled") add(b.Date,{k:"b",from:b.Start,to:b.End,t:b.Treatment,n:b.Name,ref:b.Ref,st:b.Status}); });
+  D.consultations.forEach(c=>{ if(c.Status!=="Cancelled"){ const e=toMin(String(c.Time))+CONFIG.consultMins; add(c.Date,{k:"c",from:c.Time,to:pad(Math.floor(e/60))+":"+pad(e%60),t:"Free "+String(c.Type).toLowerCase(),n:c.Name,ref:c.Ref}); } });
+  (D.blocked||[]).forEach(x=>{ const s=new Date(x.start.replace(" ","T")), e=new Date(x.end.replace(" ","T")); for(const d=new Date(s.getFullYear(),s.getMonth(),s.getDate()); d<e; d.setDate(d.getDate()+1)) add(ymd(d),{k:"x",t:x.title,from:ymd(d)===x.start.slice(0,10)?x.start.slice(11):"00:00",to:ymd(d)===x.end.slice(0,10)?x.end.slice(11):"23:59"}); });
+  return m;
+}
+function admYearBusy(y){
+  // busy times for the whole year: her Google Calendar (live) plus the dashboard lists
+  if(ADM.yearBusy[y]) return ADM.yearBusy[y];
+  ADM.yearBusy[y]="loading";
+  if(ADM.demo||!CONFIG.apiUrl){ ADM.yearBusy[y]=[]; return []; }
+  const p=s=>{const [d,t]=s.split(" ");const [yy,mo,da]=d.split("-").map(Number);const [h,mi]=t.split(":").map(Number);return new Date(yy,mo-1,da,h,mi);};
+  apiGet({action:"busy",from:y+"-01-01",to:y+"-12-31"}).then(res=>{ ADM.yearBusy[y]=(res&&res.busy||[]).map(([a,b])=>[p(a),p(b)]); if(ADM.tab==="year") renderYear(); })
+    .catch(()=>{ ADM.yearBusy[y]=[]; if(ADM.tab==="year") renderYear(); });
+  return "loading";
+}
+function dayFree(dstr,items,ybusy){
+  // free windows inside opening hours, after lunch, appointments and the gap between clients
+  const [y,m,d]=dstr.split("-").map(Number), day=new Date(y,m-1,d);
+  if(!CONFIG.openDays.includes(day.getDay())) return null;
+  const O=toMin(CONFIG.open), C=toMin(CONFIG.close), buf=CONFIG.bufferMins;
+  let taken=[[toMin(CONFIG.lunch.start),toMin(CONFIG.lunch.end)]];
+  (items||[]).forEach(x=>taken.push([toMin(x.from)-(x.k==="x"?0:buf),toMin(x.to)+(x.k==="x"?0:buf)]));
+  if(Array.isArray(ybusy)){ const s=new Date(day), e=new Date(day); e.setDate(e.getDate()+1);
+    ybusy.forEach(([a,b])=>{ if(a<e&&b>s) taken.push([Math.max(0,(a-s)/60000)-buf,Math.min(1440,(b-s)/60000)+buf]); }); }
+  taken.sort((a,b)=>a[0]-b[0]);
+  const free=[]; let cur=O;
+  taken.forEach(([a,b])=>{ if(a>cur) free.push([cur,Math.min(a,C)]); cur=Math.max(cur,b); });
+  if(cur<C) free.push([cur,C]);
+  return free.filter(([a,b])=>b-a>=30);
+}
+function dayStatus(dstr,items,ybusy){
+  const T=todayStr();
+  const free=dayFree(dstr,items,ybusy);
+  if(free===null) return "closed";
+  if(dstr<T) return "past";
+  const open=toMin(CONFIG.close)-toMin(CONFIG.open)-(toMin(CONFIG.lunch.end)-toMin(CONFIG.lunch.start));
+  const freeMin=free.reduce((a,[s,e])=>a+(e-s),0);
+  if((items||[]).some(x=>x.k==="x")&&freeMin===0) return "blocked";
+  if(freeMin>=open-1) return "free";
+  return free.some(([s,e])=>e-s>=90)?"part":"full";
+}
+const hm=m=>pad(Math.floor(m/60))+":"+pad(Math.round(m%60));
+function renderYear(){
+  const y=ADM.year, T=todayStr(), items=admItemsByDay(), yb=admYearBusy(y);
+  let months="";
+  for(let m=0;m<12;m++){
+    const first=new Date(y,m,1), n=new Date(y,m+1,0).getDate(), lead=(first.getDay()+6)%7;
+    let cells=["M","T","W","T","F","S","S"].map(w=>`<span class="w">${w}</span>`).join("")+"<span></span>".repeat(lead);
+    for(let d=1;d<=n;d++){
+      const ds=y+"-"+pad(m+1)+"-"+pad(d), it=items[ds]||[], st=dayStatus(ds,it,yb);
+      const has=it.some(x=>x.k!=="x");
+      cells+=`<button type="button" class="${st}${ds===T?" today":""}${has?" has":""}" data-day="${ds}" aria-label="${esc(prettyDay(ds))}">${d}</button>`;
+    }
+    months+=`<div class="yr-m"><h4>${MONTHS[m]}</h4><div class="yr-d">${cells}</div></div>`;
+  }
+  $("#admPane").innerHTML=`<div class="yr-head"><div class="yr-nav"><button type="button" id="yrPrev" aria-label="Previous year">‹</button><strong>${y}</strong><button type="button" id="yrNext" aria-label="Next year">›</button>${y!==new Date().getFullYear()?`<button type="button" id="yrNow" style="width:auto;padding:0 12px;font-size:.62rem;letter-spacing:.18em;text-transform:uppercase">Today</button>`:""}</div>
+    <div class="yr-legend"><span><i style="background:#F3F8F1;border-color:#DCE9D6"></i>Free all day</span><span><i style="background:#F6E9D8;border-color:#E9D2B4"></i>Some times free</span><span><i style="background:#EBC9B9;border-color:#DDB09B"></i>Fully booked</span><span><i style="background:repeating-linear-gradient(135deg,#EFE6DD 0 3px,#E3D7CC 3px 6px)"></i>Blocked</span><span><i style="background:var(--porcelain)"></i>Closed or past</span></div></div>
+    ${yb==="loading"?`<p class="note" style="margin-bottom:12px">Checking your Google Calendar…</p>`:""}
+    <div class="yr-grid">${months}</div><p class="note" style="margin-top:14px">Tap any day to see the appointments and the free times. A dot means there are appointments that day.</p>`;
+  $("#yrPrev").onclick=()=>{ ADM.year--; renderYear(); };
+  $("#yrNext").onclick=()=>{ ADM.year++; renderYear(); };
+  if($("#yrNow")) $("#yrNow").onclick=()=>{ ADM.year=new Date().getFullYear(); renderYear(); };
+  $$("#admPane [data-day]").forEach(b=>b.onclick=()=>openDay(b.dataset.day));
+  if(y===new Date().getFullYear()&&!ADM.yearSeen){ ADM.yearSeen=true; const el=$$("#admPane .yr-m")[new Date().getMonth()]; if(el) el.scrollIntoView({block:"start"}); window.scrollBy(0,-100); }
+}
+function openDay(ds){
+  const items=(admItemsByDay()[ds]||[]).sort((a,b)=>a.from<b.from?-1:1), yb=ADM.yearBusy[+ds.slice(0,4)];
+  const free=dayFree(ds,items,yb), st=dayStatus(ds,items,yb);
+  const label={free:"Free all day",part:"Some times free",full:"Fully booked",blocked:"Blocked",closed:"Closed",past:"Past"}[st];
+  const list=items.map(x=>x.k==="x"
+    ?`<div class="item s-block"><span class="t">${esc(x.from)}<small>to ${esc(x.to)}</small></span><span class="w"><b>Blocked</b><span>${esc(x.t)}</span></span></div>`
+    :`<button type="button" class="item s-${x.k==="c"?"consult":(ST_CLASS[x.st]||"reserved")}" data-open="${x.k}:${esc(x.ref)}"><span class="t">${esc(x.from)}<small>to ${esc(x.to)}</small></span><span class="w"><b>${esc(x.n)}</b><span>${esc(x.t)}</span></span></button>`).join("");
+  openDrawer(`<p class="eyebrow gold">${esc(label)}</p><h2>${esc(prettyDay(ds))}</h2>
+    ${free&&st!=="past"?`<div style="display:grid;gap:8px"><p class="eyebrow">Free times</p>${free.length?`<div class="yr-free">${free.map(([a,b])=>`<span>${hm(a)} to ${hm(b)}</span>`).join("")}</div>`:`<p class="note">No free time left this day.</p>`}</div>`:""}
+    <div style="display:grid;gap:8px"><p class="eyebrow">Appointments</p>${list||`<p class="note">Nothing booked.</p>`}</div>
+    ${free&&st!=="past"&&st!=="blocked"?`<div class="row-btns"><button type="button" class="sbtn" id="dyBlock">Block this day</button></div>`:""}
+    <p class="note">Free times allow for lunch (${CONFIG.lunch.start} to ${CONFIG.lunch.end}) and ${CONFIG.bufferMins} minutes between clients. Anything else in your Google Calendar also counts as busy.</p>`);
+  $$("#admDrawerPane [data-open]").forEach(el=>el.onclick=()=>{ const [k,id]=el.dataset.open.split(/:(.+)/); if(k==="b") openBooking(id); else openConsult(id); });
+  if($("#dyBlock")) $("#dyBlock").onclick=()=>{ closeDrawer(); ADM.tab="block"; admRender(); $("#blk-d").value=ds; $("#blk-d2").value=ds; $("#blk-r").focus(); };
 }
 
 function wireOpen(){ $$("#admPane [data-open]").forEach(el=>el.onclick=()=>{ const [k,id]=el.dataset.open.split(/:(.+)/); if(k==="b") openBooking(id); else if(k==="c") openConsult(id); else openClient(id); }); }
