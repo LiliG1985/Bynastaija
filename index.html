@@ -764,7 +764,7 @@ footer{background:var(--nude);color:var(--muted);border-top:1px solid var(--line
             <p class="eyebrow">Consultation reserved</p>
             <p class="ref" id="csRef"></p>
             <p id="csDoneText"></p>
-            <p class="note">A confirmation is on its way to your email, and Nastasija will confirm your call on WhatsApp.</p>
+            <p class="note">A confirmation is on its way to your email. If you can’t see it, please check your spam or junk folder. Nastasija will also confirm your call on WhatsApp.</p>
             <div style="display:flex;gap:12px;flex-wrap:wrap">
               <a class="btn" id="csWa" href="#" target="_blank" rel="noopener">Message on WhatsApp</a>
               <a class="btn line plain" href="#treatments">Browse treatments</a>
@@ -1261,7 +1261,7 @@ $("#bkReserve").onclick=async()=>{
   $("#bkMsg").textContent=depositMessage(ref);
   $("#doneAmt").textContent=fmt(bkDeposit());
   $("#bankDl").innerHTML=bankRows().map(([k,v])=>`<dt>${k}</dt><dd>${v}</dd>`).join("");
-  $("#bkMailNote").textContent=data.email?" and by email":"";
+  $("#bkMailNote").textContent=data.email?" and by email (if you can’t see the email, please check your spam or junk folder)":"";
   $("#bkWa").href=wa(CONFIG.whatsapp,`Hi Nastasija, here is my deposit receipt for booking ${ref}: ${bk.svc.name} on ${dateLong(bk.date)} at ${bk.time}. Name: ${data.name}.`);
   bk.step=4; bkRender(); $("#bookForm").scrollIntoView({behavior:"smooth",block:"start"});
   loadBusy();
@@ -1509,7 +1509,7 @@ document.addEventListener("keydown",e=>{ if(e.key==="Escape"&&!$("#admDrawer").h
 function admDepositMsg(b){
   const bk2=(ADM.data.bank)||{}, lines=[["Account name",bk2.accountName],["Bank",bk2.bank],["IBAN",bk2.iban],["Account no.",bk2.accountNumber]].filter(r=>r[1]).map(r=>r[0]+": "+r[1]).join("\n");
   const [y,m,d]=b.Date.split("-").map(Number), when=new Date(y,m-1,d).toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long",year:"numeric"})+" at "+b.Start;
-  return `Hi ${String(b.Name).split(" ")[0]}, thank you for temporarily reserving your treatment slot with By Nastasija.\n\n${b.Treatment}\n${when}\n\nPlease pay a 50% deposit of ${b["50% deposit (AED)"]} AED to:\n${lines||"[bank details]"}\nReference: ${b.Ref}\n\nYour slot is held for ${CONFIG.holdHours} hours until the deposit is received. Please send your receipt here once paid.`;
+  return `Hi ${String(b.Name).split(" ")[0]}, thank you for temporarily reserving your treatment slot with By Nastasija.\n\n${b.Treatment}\n${when}\n\n${lines?`Please pay a 50% deposit of ${b["50% deposit (AED)"]} AED to:\n${lines}`:`To confirm, please pay a 50% deposit of ${b["50% deposit (AED)"]} AED by bank transfer. Bank details: [type them here before sending]`}\nReference: ${b.Ref}\n\nYour slot is held for ${CONFIG.holdHours} hours until the deposit is received. Please send your receipt here once paid.${b.Email?"\n\nWe have also emailed you these details. If you can't see the email, please check your spam or junk folder.":""}`;
 }
 function openBooking(ref){
   const b=ADM.data.bookings.find(x=>x.Ref===ref); if(!b) return;
