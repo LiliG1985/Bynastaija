@@ -1,0 +1,486 @@
+/**
+ * By Nastasija booking backend (Google Apps Script)
+ * ------------------------------------------------
+ * Runs free on Nastasija's Google account (skinbynastasija@gmail.com).
+ *  - Saves every booking, consultation and message into a Google Sheet
+ *  - Keeps a client list with each client's full treatment history
+ *  - Puts every booking into her Google Calendar (with the client's details and history)
+ *  - Emails her each new booking with a one tap WhatsApp button that sends the client
+ *    the "please pay your 50% deposit" message with the bank details
+ *  - Emails the client a confirmation with the bank details (if they gave an email)
+ *  - Tells the website which times are already taken, so nobody can double book
+ *
+ * Setup: see SETUP-GUIDE.txt. In short: paste this file into a new Apps Script project,
+ * fill in SETTINGS below, run setup() once, then Deploy > New deployment > Web app.
+ */
+
+const SETTINGS = {
+  BUSINESS: 'By Nastasija',
+  OWNER_EMAIL: 'skinbynastasija@gmail.com',
+  OWNER_WHATSAPP: '971529086773',
+  TIMEZONE: 'Asia/Dubai',
+  OPEN: '10:00',
+  CLOSE: '19:00',
+  OPEN_DAYS: [1, 2, 3, 4, 5, 6],          // 0 = Sunday ... 6 = Saturday
+  LUNCH: ['13:00', '14:00'],
+  BUFFER_MIN: 10,                          // gap between clients
+  CONSULT_MIN: 20,
+  DEPOSIT_PERCENT: 50,
+  HOLD_HOURS: 24,
+  ADMIN_PASSWORD: '',                      // type her dashboard password here, run setup(), then clear it again
+  SESSION_DAYS: 30,                        // how long she stays logged in on a device
+  BANK: {                                  // ADD HER BANK DETAILS HERE
+    accountName: '',
+    bank: '',
+    iban: '',
+    accountNumber: ''
+  }
+};
+
+/* Treatments: keep in step with the website. mins = time blocked in the calendar. */
+const SERVICES = {
+  'ph-peel':       { name: 'PHformula Resurfacing Peel', mins: 90, price: 700 },
+  'ph-peel-plus':  { name: 'PHformula Peel + Nanoneedling or Bio Microneedling', mins: 90, price: 850 },
+  'circadia':      { name: 'Customised Circadia Treatment', mins: 90, price: 700 },
+  'oxygen':        { name: 'Cocoa+ Oxygen Facial', mins: 90, price: 650 },
+  'biorepeel':     { name: 'BioRePeel', mins: 90, price: 650 },
+  'nuqy':          { name: 'NUQY Bio Microneedling', mins: 90, price: 700 },
+  'mn-salmon':     { name: 'Microneedling with Salmon DNA & Exosomes', mins: 90, price: 700 },
+  'mn-exo':        { name: 'Microneedling with PHformula Biomimetic Exosomes', mins: 90, price: 900 },
+  'mn-stem':       { name: 'Microneedling with Stem Cells', mins: 90, price: 900 },
+  'mn-biorepeel':  { name: 'Microneedling with BioRePeel', mins: 90, price: 700 },
+  'lip-blush':     { name: 'Lip Blush', mins: 150, price: 1200 },
+  'brows':         { name: 'Eyebrows (PMU)', mins: 120, price: 1200 },
+  'top-up':        { name: 'SPMU Top Up', mins: 90, price: 400 },
+  'brow-lam':      { name: 'Brow Lamination', mins: 45, price: 250 }
+};
+const ADDONS = {
+  browtint: { name: 'Brow tint', mins: 10, price: 50 },
+  bothtint: { name: 'Brow tint and lash tint', mins: 15, price: 80 }
+};
+
+const BOOKING_STATUSES = ['Reserved, awaiting deposit', 'Deposit paid', 'Completed', 'Cancelled', 'No show'];
+const CONSULT_STATUSES = ['Reserved', 'Confirmed', 'Done', 'Cancelled'];
+
+const HEAD = {
+  Bookings: ['Ref', 'Created', 'Status', 'Date', 'Start', 'End', 'Treatment', 'Add ons', 'Name', 'Phone', 'Email',
+             'Total (AED)', '50% deposit (AED)', 'Notes', 'Client type', 'Send deposit message', 'Calendar event id'],
+  Consultations: ['Ref', 'Created', 'Status', 'Date', 'Time', 'Type', 'Name', 'Phone', 'Email', 'Interested in',
+                  'Concerns', 'WhatsApp client', 'Calendar event id'],
+  Clients: ['Phone', 'Name', 'Email', 'First contact', 'Last booking', 'Completed visits', 'Bookings', 'Treatment history', 'Private notes'],
+  Messages: ['Received', 'Name', 'Phone', 'Email', 'Subject', 'Message']
+};
+
+/* ===================== one time setup ===================== */
+function setup() {
+  const props = PropertiesService.getScriptProperties();
+  let ss;
+  const existing = props.getProperty('SHEET_ID');
+  if (existing) { ss = SpreadsheetApp.openById(existing); }
+  else {
+    ss = SpreadsheetApp.create('By Nastasija · Bookings & Clients');
+    props.setProperty('SHEET_ID', ss.getId());
+  }
+  ss.setSpreadsheetTimeZone(SETTINGS.TIMEZONE);
+  if (SETTINGS.ADMIN_PASSWORD) {
+    props.setProperty('ADMIN_HASH', hash_(SETTINGS.ADMIN_PASSWORD));
+    Logger.log('Dashboard password saved. You can now clear ADMIN_PASSWORD in SETTINGS and save.');
+  } else if (!props.getProperty('ADMIN_HASH')) {
+    Logger.log('No dashboard password yet: type one in SETTINGS.ADMIN_PASSWORD and run setup() again.');
+  }
+  Object.keys(HEAD).forEach(function (name) {
+    let sh = ss.getSheetByName(name) || ss.insertSheet(name);
+    if (sh.getLastRow() === 0) sh.appendRow(HEAD[name]);
+    sh.setFrozenRows(1);
+    sh.getRange(1, 1, 1, HEAD[name].length).setFontWeight('bold').setBackground('#EFE6DD');
+  });
+  const def = ss.getSheetByName('Sheet1'); if (def && ss.getSheets().length > 1) ss.deleteSheet(def);
+  setStatusRule_(ss.getSheetByName('Bookings'), BOOKING_STATUSES);
+  setStatusRule_(ss.getSheetByName('Consultations'), CONSULT_STATUSES);
+
+  ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === 'onSheetEdit') ScriptApp.deleteTrigger(t); });
+  ScriptApp.newTrigger('onSheetEdit').forSpreadsheet(ss).onEdit().create();
+
+  Logger.log('Setup done. Your bookings sheet: ' + ss.getUrl());
+}
+function setStatusRule_(sh, list) {
+  const rule = SpreadsheetApp.newDataValidation().requireValueInList(list, true).setAllowInvalid(false).build();
+  sh.getRange(2, 3, 1000, 1).setDataValidation(rule);
+}
+function ss_() { return SpreadsheetApp.openById(PropertiesService.getScriptProperties().getProperty('SHEET_ID')); }
+function cal_() { return CalendarApp.getDefaultCalendar(); }
+
+/* ===================== web endpoints ===================== */
+function doGet(e) {
+  const p = (e && e.parameter) || {};
+  try {
+    if (p.action === 'busy') return json_({ busy: busy_(p.from, p.to) });
+    if (p.action === 'lookup') return json_(lookup_(p.phone));
+    return json_({ ok: true, service: SETTINGS.BUSINESS });
+  } catch (err) { return json_({ ok: false, message: 'Server error' }); }
+}
+
+function doPost(e) {
+  let data;
+  try { data = JSON.parse(e.postData.contents); } catch (err) { return json_({ ok: false, message: 'Bad request' }); }
+  if (data.website) return json_({ ok: true, ref: 'OK' });       // spam bot filled the hidden field
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(20000);
+    if (data.action === 'book') return json_(book_(data));
+    if (data.action === 'consult') return json_(consult_(data));
+    if (data.action === 'contact') return json_(contact_(data));
+    if (data.action === 'login') return json_(login_(data.password));
+    if (String(data.action).indexOf('admin_') === 0) {
+      if (!checkSession_(data.token)) return json_({ ok: false, error: 'auth', message: 'Please log in again.' });
+      return json_(admin_(data));
+    }
+    return json_({ ok: false, message: 'Unknown action' });
+  } catch (err) {
+    console.error(err);
+    return json_({ ok: false, message: 'Something went wrong. Please message Nastasija on WhatsApp.' });
+  } finally { try { lock.releaseLock(); } catch (x) {} }
+}
+
+/* ===================== availability ===================== */
+function busy_(from, to) {
+  const tz = SETTINGS.TIMEZONE;
+  const start = Utilities.parseDate(from + ' 00:00', tz, 'yyyy-MM-dd HH:mm');
+  const end = Utilities.parseDate(to + ' 23:59', tz, 'yyyy-MM-dd HH:mm');
+  return cal_().getEvents(start, end).map(function (ev) {
+    const s = ev.isAllDayEvent() ? ev.getAllDayStartDate() : ev.getStartTime();
+    const f = ev.isAllDayEvent() ? ev.getAllDayEndDate() : ev.getEndTime();
+    return [fmt_(s, 'yyyy-MM-dd HH:mm'), fmt_(f, 'yyyy-MM-dd HH:mm')];
+  });
+}
+function slotProblem_(start, end) {
+  const tz = SETTINGS.TIMEZONE;
+  const day = fmt_(start, 'yyyy-MM-dd');
+  const at = function (t) { return Utilities.parseDate(day + ' ' + t, tz, 'yyyy-MM-dd HH:mm'); };
+  const dow = Number(fmt_(start, 'u')) % 7;                       // u: 1 = Monday ... 7 = Sunday
+  if (SETTINGS.OPEN_DAYS.indexOf(dow) < 0) return 'closed';
+  if (start < at(SETTINGS.OPEN) || end > at(SETTINGS.CLOSE)) return 'closed';
+  if (start < at(SETTINGS.LUNCH[1]) && end > at(SETTINGS.LUNCH[0])) return 'lunch';
+  if (start < new Date()) return 'past';
+  const buf = SETTINGS.BUFFER_MIN * 60000;
+  const clash = cal_().getEvents(new Date(start.getTime() - buf), new Date(end.getTime() + buf));
+  return clash.length ? 'taken' : '';
+}
+
+/* ===================== bookings ===================== */
+function book_(d) {
+  const svc = SERVICES[d.service];
+  if (!svc) return { ok: false, message: 'Please choose a treatment.' };
+  const phone = normPhone_(d.phone);
+  if (phone.length < 11 || !clean_(d.name)) return { ok: false, message: 'Please add your name and mobile number.' };
+  const addons = (d.addons || []).filter(function (k) { return ADDONS[k]; });
+  const mins = svc.mins + addons.reduce(function (a, k) { return a + ADDONS[k].mins; }, 0);
+  const total = svc.price + addons.reduce(function (a, k) { return a + ADDONS[k].price; }, 0);
+  const deposit = Math.round(total * SETTINGS.DEPOSIT_PERCENT / 100);
+  const start = Utilities.parseDate(d.date + ' ' + d.time, SETTINGS.TIMEZONE, 'yyyy-MM-dd HH:mm');
+  const end = new Date(start.getTime() + mins * 60000);
+  const problem = slotProblem_(start, end);
+  if (problem) return { ok: false, error: problem === 'taken' ? 'taken' : 'invalid', message: 'That time is no longer available. Please pick another.' };
+
+  const ref = 'BN-' + Utilities.getUuid().slice(0, 6).toUpperCase();
+  const name = clean_(d.name), email = clean_(d.email), notes = clean_(d.notes);
+  const addonNames = addons.map(function (k) { return ADDONS[k].name; }).join(', ');
+  const history = historyFor_(phone);
+  const depositMsg = depositMessage_(name, svc.name, start, deposit, ref);
+  const waLink = 'https://wa.me/' + phone + '?text=' + encodeURIComponent(depositMsg);
+
+  const ev = cal_().createEvent('RESERVED · ' + svc.name + ' · ' + name, start, end, {
+    description: [
+      'Status: Reserved, awaiting ' + deposit + ' AED deposit',
+      'Ref: ' + ref, 'Client: ' + name, 'Phone: +' + phone, 'Email: ' + (email || 'none'),
+      'Treatment: ' + svc.name + (addonNames ? ' + ' + addonNames : ''),
+      'Total: ' + total + ' AED · 50% deposit: ' + deposit + ' AED',
+      'Notes: ' + (notes || 'none'), '',
+      'Treatment history:', history.text || 'No previous bookings', '',
+      'Send deposit message: ' + waLink
+    ].join('\n')
+  });
+  ev.setColor(CalendarApp.EventColor.YELLOW);
+
+  const sh = ss_().getSheetByName('Bookings');
+  sh.appendRow([ref, new Date(), BOOKING_STATUSES[0], "'" + d.date, "'" + d.time, "'" + fmt_(end, 'HH:mm'), svc.name, addonNames, safe_(name),
+    "'+" + phone, safe_(email), total, deposit, safe_(notes), d.returning ? 'Returning' : 'New',
+    '=HYPERLINK("' + waLink.replace(/"/g, '""') + '","Send on WhatsApp")', ev.getId()]);
+  upsertClient_(phone, name, email, d.date);
+
+  notifyOwner_('New booking: ' + svc.name + ' · ' + name + ' · ' + pretty_(start), [
+    ['Reference', ref], ['Status', 'Reserved, awaiting deposit'], ['Treatment', svc.name + (addonNames ? ' + ' + addonNames : '')],
+    ['When', pretty_(start) + ' to ' + fmt_(end, 'HH:mm')], ['Client', name], ['Phone', '+' + phone], ['Email', email || 'none'],
+    ['Total', total + ' AED'], ['50% deposit', deposit + ' AED'], ['Notes', notes || 'none'],
+    ['Client type', d.returning ? 'Returning' : 'New'], ['History', (history.html || 'No previous bookings')]
+  ], [{ label: 'Send deposit message on WhatsApp', url: waLink }]);
+
+  if (email) {
+    MailApp.sendEmail({
+      to: email, name: SETTINGS.BUSINESS, replyTo: SETTINGS.OWNER_EMAIL,
+      subject: 'Your treatment is reserved · please pay your 50% deposit',
+      htmlBody: wrap_('<p>' + escape_(depositMsg).replace(/\n/g, '<br>') + '</p>' +
+        '<p>Once paid, please send your receipt to Nastasija on WhatsApp: <a href="https://wa.me/' + SETTINGS.OWNER_WHATSAPP + '">+' + SETTINGS.OWNER_WHATSAPP + '</a></p>')
+    });
+  }
+  return { ok: true, ref: ref, deposit: deposit };
+}
+
+function depositMessage_(name, treatment, start, deposit, ref) {
+  const b = SETTINGS.BANK;
+  const lines = [['Account name', b.accountName], ['Bank', b.bank], ['IBAN', b.iban], ['Account no.', b.accountNumber]]
+    .filter(function (r) { return r[1]; }).map(function (r) { return r[0] + ': ' + r[1]; }).join('\n');
+  return 'Hi ' + name.split(' ')[0] + ', thank you for temporarily reserving your treatment slot with ' + SETTINGS.BUSINESS + '.\n\n' +
+    treatment + '\n' + pretty_(start) + '\n\n' +
+    'Please pay a 50% deposit of ' + deposit + ' AED to:\n' + (lines || '[bank details]') + '\nReference: ' + ref + '\n\n' +
+    'Your slot is held for ' + SETTINGS.HOLD_HOURS + ' hours until the deposit is received. Please send your receipt here once paid.';
+}
+
+/* ===================== consultations ===================== */
+function consult_(d) {
+  const phone = normPhone_(d.phone);
+  if (phone.length < 11 || !clean_(d.name)) return { ok: false, message: 'Please add your name and mobile number.' };
+  const start = Utilities.parseDate(d.date + ' ' + d.time, SETTINGS.TIMEZONE, 'yyyy-MM-dd HH:mm');
+  const end = new Date(start.getTime() + SETTINGS.CONSULT_MIN * 60000);
+  if (start < new Date()) return { ok: false, error: 'invalid', message: 'Please pick a future time.' };
+  if (cal_().getEvents(start, end).length) return { ok: false, error: 'taken' };
+
+  const ref = 'BC-' + Utilities.getUuid().slice(0, 6).toUpperCase();
+  const name = clean_(d.name), email = clean_(d.email), type = clean_(d.type) || 'Call';
+  const msg = 'Hi ' + name.split(' ')[0] + ', thank you for booking your free ' + type.toLowerCase() + ' with ' + SETTINGS.BUSINESS +
+    ' on ' + pretty_(start) + '. ' + (type === 'Video call' ? 'I will send you the video link here shortly before. ' : 'I will call you on this number. ') +
+    'If you can, send a few photos taken in daylight beforehand. See you soon, Nastasija';
+  const waLink = 'https://wa.me/' + phone + '?text=' + encodeURIComponent(msg);
+
+  const ev = cal_().createEvent('CONSULT ' + type.toUpperCase() + ' · ' + name, start, end, {
+    description: ['Ref: ' + ref, 'Client: ' + name, 'Phone: +' + phone, 'Email: ' + (email || 'none'),
+      'Interested in: ' + clean_(d.topic), 'Concerns: ' + (clean_(d.message) || 'none'), '', 'Confirm on WhatsApp: ' + waLink].join('\n')
+  });
+  ev.setColor(CalendarApp.EventColor.PALE_BLUE);
+
+  ss_().getSheetByName('Consultations').appendRow([ref, new Date(), CONSULT_STATUSES[0], "'" + d.date, "'" + d.time, type, safe_(name), "'+" + phone,
+    safe_(email), safe_(d.topic), safe_(d.message), '=HYPERLINK("' + waLink.replace(/"/g, '""') + '","Confirm on WhatsApp")', ev.getId()]);
+  upsertClient_(phone, name, email, null);
+
+  notifyOwner_('New free consultation: ' + name + ' · ' + pretty_(start), [
+    ['Reference', ref], ['Type', type], ['When', pretty_(start)], ['Client', name], ['Phone', '+' + phone],
+    ['Email', email || 'none'], ['Interested in', clean_(d.topic)], ['Concerns', clean_(d.message) || 'none']
+  ], [{ label: 'Confirm on WhatsApp', url: waLink }]);
+  return { ok: true, ref: ref };
+}
+
+/* ===================== messages ===================== */
+function contact_(d) {
+  ss_().getSheetByName('Messages').appendRow([new Date(), safe_(d.name), d.phone ? "'+" + normPhone_(d.phone) : '', safe_(d.email), safe_(d.subject), safe_(d.message)]);
+  notifyOwner_('Website message: ' + clean_(d.subject) + ' · ' + clean_(d.name), [
+    ['From', clean_(d.name)], ['Phone', d.phone ? '+' + normPhone_(d.phone) : 'none'], ['Email', clean_(d.email) || 'none'], ['Message', clean_(d.message)]
+  ], d.phone ? [{ label: 'Reply on WhatsApp', url: 'https://wa.me/' + normPhone_(d.phone) }] : []);
+  return { ok: true };
+}
+
+/* ===================== clients & history ===================== */
+function lookup_(phone) {
+  const p = normPhone_(phone);
+  if (p.length < 11) return { found: false };
+  const row = findClientRow_(p);
+  return { found: row > 0 };                                      // only says yes or no; history stays private
+}
+function findClientRow_(phone) {
+  const sh = ss_().getSheetByName('Clients');
+  const vals = sh.getRange(1, 1, Math.max(sh.getLastRow(), 1), 1).getValues();
+  for (let i = 1; i < vals.length; i++) if (normPhone_(vals[i][0]) === phone) return i + 1;
+  return -1;
+}
+function historyFor_(phone) {
+  const rows = ss_().getSheetByName('Bookings').getDataRange().getValues().slice(1)
+    .filter(function (r) { return normPhone_(r[9]) === phone; })
+    .map(function (r) { return { date: dstr_(r[3]), t: r[6] + (r[7] ? ' + ' + r[7] : ''), s: r[2] }; })
+    .sort(function (a, b) { return a.date < b.date ? -1 : 1; });
+  return {
+    rows: rows,
+    text: rows.map(function (r) { return r.date + ' · ' + r.t + ' · ' + r.s; }).join('\n'),
+    html: rows.map(function (r) { return escape_(r.date + ' · ' + r.t + ' · ' + r.s); }).join('<br>')
+  };
+}
+function upsertClient_(phone, name, email, bookingDate) {
+  const sh = ss_().getSheetByName('Clients');
+  let row = findClientRow_(phone);
+  if (row < 0) { sh.appendRow(["'+" + phone, safe_(name), safe_(email), new Date(), '', 0, 0, '', '']); row = sh.getLastRow(); }
+  else {
+    if (name) sh.getRange(row, 2).setValue(safe_(name));
+    if (email) sh.getRange(row, 3).setValue(safe_(email));
+  }
+  refreshClient_(phone, row);
+}
+function refreshClient_(phone, row) {
+  const sh = ss_().getSheetByName('Clients');
+  row = row || findClientRow_(phone); if (row < 0) return;
+  const h = historyFor_(phone);
+  const live = h.rows.filter(function (r) { return r.s !== 'Cancelled'; });
+  sh.getRange(row, 5, 1, 4).setValues([[live.length ? live[live.length - 1].date : '',
+    h.rows.filter(function (r) { return r.s === 'Completed'; }).length, live.length, h.text]]);
+}
+
+/* ===================== when Nastasija changes a status in the sheet ===================== */
+function onSheetEdit(e) {
+  const sh = e.range.getSheet(), row = e.range.getRow();
+  if (row < 2 || e.range.getColumn() !== 3) return;
+  applyStatus_(sh.getName(), row, e.range.getValue());
+}
+function applyStatus_(name, row, status) {
+  const sh = ss_().getSheetByName(name);
+  if (name === 'Bookings') {
+    const r = sh.getRange(row, 1, 1, HEAD.Bookings.length).getValues()[0];
+    const ev = r[16] ? cal_().getEventById(r[16]) : null;
+    if (ev) {
+      const base = r[6] + ' · ' + r[8];
+      if (status === 'Deposit paid') { ev.setTitle('CONFIRMED · ' + base); ev.setColor(CalendarApp.EventColor.GREEN); }
+      else if (status === BOOKING_STATUSES[0]) { ev.setTitle('RESERVED · ' + base); ev.setColor(CalendarApp.EventColor.YELLOW); }
+      else if (status === 'Completed') { ev.setTitle('DONE · ' + base); ev.setColor(CalendarApp.EventColor.GRAY); }
+      else if (status === 'No show') { ev.setTitle('NO SHOW · ' + base); ev.setColor(CalendarApp.EventColor.RED); }
+      else if (status === 'Cancelled') { ev.deleteEvent(); sh.getRange(row, 17).setValue(''); }
+      if (status !== 'Cancelled') ev.setDescription(String(ev.getDescription()).replace(/^Status: .*$/m, 'Status: ' + status));
+    }
+    refreshClient_(normPhone_(r[9]));
+  }
+  if (name === 'Consultations') {
+    const r = sh.getRange(row, 1, 1, HEAD.Consultations.length).getValues()[0];
+    const ev = r[12] ? cal_().getEventById(r[12]) : null;
+    if (ev) {
+      if (status === 'Cancelled') { ev.deleteEvent(); sh.getRange(row, 13).setValue(''); }
+      else if (status === 'Confirmed') ev.setColor(CalendarApp.EventColor.BLUE);
+      else if (status === 'Done') ev.setColor(CalendarApp.EventColor.GRAY);
+      else if (status === 'Reserved') ev.setColor(CalendarApp.EventColor.PALE_BLUE);
+    }
+  }
+}
+
+/* ===================== studio dashboard (login + data) ===================== */
+function login_(password) {
+  const cache = CacheService.getScriptCache();
+  const tries = Number(cache.get('login_tries') || 0);
+  if (tries >= 8) return { ok: false, message: 'Too many attempts. Please wait 15 minutes and try again.' };
+  const stored = PropertiesService.getScriptProperties().getProperty('ADMIN_HASH');
+  if (!stored) return { ok: false, message: 'No password has been set yet. Run setup() with ADMIN_PASSWORD filled in.' };
+  if (!password || hash_(String(password)) !== stored) {
+    cache.put('login_tries', String(tries + 1), 900);
+    Utilities.sleep(800);
+    return { ok: false, message: 'That password is not right.' };
+  }
+  cache.remove('login_tries');
+  const token = Utilities.getUuid() + Utilities.getUuid();
+  const props = PropertiesService.getScriptProperties();
+  props.setProperty('sess_' + hash_(token), String(Date.now() + SETTINGS.SESSION_DAYS * 864e5));
+  // tidy expired sessions
+  const all = props.getProperties();
+  Object.keys(all).forEach(function (k) { if (k.indexOf('sess_') === 0 && Number(all[k]) < Date.now()) props.deleteProperty(k); });
+  return { ok: true, token: token, days: SETTINGS.SESSION_DAYS };
+}
+function checkSession_(token) {
+  if (!token) return false;
+  const exp = PropertiesService.getScriptProperties().getProperty('sess_' + hash_(String(token)));
+  return !!exp && Number(exp) > Date.now();
+}
+function admin_(d) {
+  const a = d.action;
+  if (a === 'admin_data') return { ok: true, data: dashboardData_(), bookingStatuses: BOOKING_STATUSES, consultStatuses: CONSULT_STATUSES };
+  if (a === 'admin_logout') { PropertiesService.getScriptProperties().deleteProperty('sess_' + hash_(String(d.token))); return { ok: true }; }
+  if (a === 'admin_status') {
+    const name = d.kind === 'consult' ? 'Consultations' : 'Bookings';
+    const list = name === 'Bookings' ? BOOKING_STATUSES : CONSULT_STATUSES;
+    if (list.indexOf(d.status) < 0) return { ok: false, message: 'Unknown status' };
+    const row = findRowByRef_(name, d.ref); if (row < 0) return { ok: false, message: 'Booking not found' };
+    ss_().getSheetByName(name).getRange(row, 3).setValue(d.status);
+    applyStatus_(name, row, d.status);
+    return { ok: true };
+  }
+  if (a === 'admin_client') {
+    const phone = normPhone_(d.phone);
+    if (phone.length < 11) return { ok: false, message: 'Please enter a valid mobile number.' };
+    const sh = ss_().getSheetByName('Clients');
+    let row = findClientRow_(phone);
+    if (row < 0) { sh.appendRow(["'+" + phone, safe_(d.name), safe_(d.email), new Date(), '', 0, 0, '', safe_(d.notes)]); row = sh.getLastRow(); }
+    else {
+      if (d.name != null) sh.getRange(row, 2).setValue(safe_(d.name));
+      if (d.email != null) sh.getRange(row, 3).setValue(safe_(d.email));
+      if (d.notes != null) sh.getRange(row, 9).setValue(safe_(d.notes));
+    }
+    refreshClient_(phone, row);
+    return { ok: true };
+  }
+  if (a === 'admin_block') {
+    const s = Utilities.parseDate(d.date + ' ' + (d.from || '00:00'), SETTINGS.TIMEZONE, 'yyyy-MM-dd HH:mm');
+    const e = Utilities.parseDate((d.dateTo || d.date) + ' ' + (d.to || '23:59'), SETTINGS.TIMEZONE, 'yyyy-MM-dd HH:mm');
+    if (!(e > s)) return { ok: false, message: 'The end must be after the start.' };
+    const ev = cal_().createEvent('BLOCKED · ' + (clean_(d.title) || 'Not available'), s, e);
+    ev.setColor(CalendarApp.EventColor.GRAY);
+    return { ok: true, id: ev.getId() };
+  }
+  return { ok: false, message: 'Unknown action' };
+}
+function findRowByRef_(name, ref) {
+  const vals = ss_().getSheetByName(name).getDataRange().getValues();
+  for (let i = 1; i < vals.length; i++) if (String(vals[i][0]) === String(ref)) return i + 1;
+  return -1;
+}
+function dashboardData_() {
+  const book = ss_();
+  const read = function (name) {
+    const vals = book.getSheetByName(name).getDataRange().getValues();
+    const keys = HEAD[name];
+    return vals.slice(1).filter(function (r) { return r.join('') !== ''; }).map(function (r) {
+      const o = {}; keys.forEach(function (k, i) { o[k] = cell_(r[i], k); }); return o;
+    });
+  };
+  const blocked = cal_().getEvents(new Date(Date.now() - 864e5), new Date(Date.now() + 120 * 864e5))
+    .filter(function (ev) { return /^BLOCKED/.test(ev.getTitle()); })
+    .map(function (ev) { return { title: ev.getTitle().replace(/^BLOCKED · /, ''), start: fmt_(ev.getStartTime(), 'yyyy-MM-dd HH:mm'), end: fmt_(ev.getEndTime(), 'yyyy-MM-dd HH:mm') }; });
+  return { bookings: read('Bookings'), consultations: read('Consultations'), clients: read('Clients'), messages: read('Messages'), blocked: blocked,
+           bank: SETTINGS.BANK, sheetUrl: book.getUrl() };
+}
+function cell_(v, key) {
+  if (v instanceof Date) {
+    if (key === 'Start' || key === 'End' || key === 'Time') return fmt_(v, 'HH:mm');
+    if (key === 'Date' || key === 'Last booking') return fmt_(v, 'yyyy-MM-dd');
+    return fmt_(v, 'yyyy-MM-dd HH:mm');
+  }
+  if (key === 'Send deposit message' || key === 'WhatsApp client') return '';
+  return v;
+}
+function hash_(s) {
+  return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, 'bynastasija:' + s, Utilities.Charset.UTF_8)
+    .map(function (b) { return ('0' + (b & 255).toString(16)).slice(-2); }).join('');
+}
+
+/* ===================== helpers ===================== */
+function json_(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
+function fmt_(d, f) { return Utilities.formatDate(d, SETTINGS.TIMEZONE, f); }
+function pretty_(d) { return fmt_(d, "EEEE d MMMM yyyy 'at' HH:mm"); }
+function dstr_(v) { return v instanceof Date ? fmt_(v, 'yyyy-MM-dd') : String(v); }
+function clean_(v) { return String(v == null ? '' : v).trim().slice(0, 2000); }
+function safe_(v) { const s = clean_(v); return /^[=+\-@]/.test(s) ? "'" + s : s; }   // stops formulas being injected into the sheet
+function escape_(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+function normPhone_(v) {
+  let d = String(v || '').replace(/\D/g, '');
+  if (d.indexOf('00') === 0) d = d.slice(2);
+  if (d.indexOf('0') === 0) d = '971' + d.slice(1);
+  if (d.length === 9 && d.charAt(0) === '5') d = '971' + d;
+  return d;
+}
+function wrap_(inner) {
+  return '<div style="font-family:Montserrat,Helvetica,Arial,sans-serif;color:#171615;background:#F7F3EE;padding:28px;max-width:560px">' +
+    '<p style="font-family:Georgia,serif;font-size:22px;margin:0 0 18px">by Nastasija</p>' + inner +
+    '<p style="color:#7A6A5E;font-size:12px;margin-top:24px">Skin · PMU · Confidence</p></div>';
+}
+function notifyOwner_(subject, rows, buttons) {
+  const table = rows.map(function (r) {
+    return '<tr><td style="padding:6px 14px 6px 0;color:#7A6A5E;vertical-align:top;white-space:nowrap">' + escape_(r[0]) + '</td><td style="padding:6px 0">' +
+      (r[0] === 'History' ? r[1] : escape_(r[1])) + '</td></tr>';
+  }).join('');
+  const btns = (buttons || []).map(function (b) {
+    return '<a href="' + b.url + '" style="display:inline-block;background:#C6A47B;color:#171615;text-decoration:none;padding:12px 18px;margin:16px 8px 0 0;font-size:13px;letter-spacing:1px">' + escape_(b.label) + '</a>';
+  }).join('');
+  MailApp.sendEmail({ to: SETTINGS.OWNER_EMAIL, subject: subject, name: 'By Nastasija website',
+    htmlBody: wrap_('<table style="font-size:14px;border-collapse:collapse">' + table + '</table>' + btns +
+      '<p style="font-size:12px;color:#7A6A5E;margin-top:18px"><a href="' + ss_().getUrl() + '">Open bookings sheet</a></p>') });
+}

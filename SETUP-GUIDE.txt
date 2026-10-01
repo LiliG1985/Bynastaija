@@ -1,0 +1,120 @@
+BY NASTASIJA · BOOKING BACKEND SETUP
+=====================================
+Time needed: about 15 minutes. Free. Everything runs on Nastasija's Google account.
+
+WHAT YOU GET
+- A private STUDIO DASHBOARD on the website (bottom of every page: "Studio login",
+  or go to the website address followed by #admin). Nastasija logs in with her own
+  password, on her phone or computer, and sees:
+    Diary          today and upcoming appointments, consultation calls and blocked time
+    Bookings       every booking, search and filter by status
+    Clients        every client with contact details, private notes and full treatment history
+    Consultations  free consultation calls
+    Messages       contact form messages
+    Block time     take time off (holidays, training) so it can't be booked
+  Tapping a booking lets her change the status (Deposit paid, Completed, Cancelled, No show),
+  send the deposit message on WhatsApp, or open the client's profile.
+  Everything below happens automatically behind the dashboard.
+- A Google Sheet called "By Nastasija · Bookings & Clients" with 4 tabs:
+    Bookings       every treatment booking, its status and a "Send on WhatsApp" link
+    Consultations  every free consultation call
+    Clients        one row per client, with their full treatment history
+    Messages       contact form messages
+- Every booking appears in her Google Calendar with the client's phone, email,
+  notes and past treatments in the description.
+    Yellow = reserved, waiting for deposit
+    Green  = deposit paid (confirmed)
+    Grey   = done
+    Light blue = consultation call
+- An email to skinbynastasija@gmail.com for every new booking, with a button that
+  opens WhatsApp with the "please pay your 50% deposit" message already written
+  (including the bank details) for that client. One tap to send.
+- An automatic confirmation email to the client with the bank details (if they gave an email).
+- The website calendar only shows free times: it reads her Google Calendar, leaves
+  10 minutes between clients and keeps 13:00 to 14:00 free for lunch.
+  Anything she adds to her calendar herself (holidays, personal plans) also blocks those times.
+
+
+STEP 1 · Create the script
+1. Sign in to Google as skinbynastasija@gmail.com.
+2. Go to https://script.google.com and click "New project".
+3. Name it "By Nastasija bookings" (top left).
+4. Delete everything in the editor, then paste in the whole of Code.gs.
+5. Near the top, in SETTINGS, fill in BANK (account name, bank, IBAN, account number).
+   Type her dashboard password in ADMIN_PASSWORD (between the quotes). Use something long.
+   Check OPEN, CLOSE, OPEN_DAYS and LUNCH match her hours.
+6. Click the save icon.
+
+STEP 2 · Run setup once
+1. In the function menu at the top (next to "Debug"), choose "setup" and click "Run".
+2. Google asks for permission. Click "Review permissions", pick her account.
+   If you see "Google hasn't verified this app", click "Advanced" then
+   "Go to By Nastasija bookings (unsafe)". This is normal for your own script.
+   Allow access (Sheets, Calendar, sending email).
+3. When it finishes, open "Execution log": it shows the link to the new bookings sheet.
+   Bookmark it on her phone (useful as a backup; day to day she uses the dashboard).
+4. Go back to SETTINGS, delete the password from ADMIN_PASSWORD (leave the quotes: '')
+   and save. The password is now stored safely in scrambled form.
+   To change her password later: type the new one in ADMIN_PASSWORD, run setup() again,
+   then clear it again.
+
+STEP 3 · Put it online
+1. Click "Deploy" (top right) > "New deployment".
+2. Click the cog next to "Select type" and choose "Web app".
+3. Description: Website bookings
+   Execute as: Me (skinbynastasija@gmail.com)
+   Who has access: Anyone
+4. Click "Deploy" and copy the "Web app URL" (it ends in /exec).
+
+STEP 4 · Connect the website
+1. Open index.html in a text editor (or GitHub's edit pencil).
+2. Search for:   apiUrl: "",
+3. Paste the URL between the quotes, for example:
+       apiUrl: "https://script.google.com/macros/s/AKfy..../exec",
+4. In the same CONFIG, fill in bank: { accountName, bank, iban, accountNumber }
+   so the website shows the bank details too.
+5. Save and upload index.html to GitHub as before.
+(Or send Claude the URL and bank details and it will do this for you.)
+
+STEP 5 · Test
+0. Go to the website, scroll to the bottom, click "Studio login" and log in with her password.
+1. On the website, click Book now > "No, I've been before". It will say the number
+   isn't found (the client list is empty). Book a free consultation instead.
+2. Check: a row in Consultations, a light blue event in her calendar, and an email.
+3. Now Book now > "No, I've been before" with the same number. It's found.
+   Book a treatment. Check the Bookings tab, the yellow calendar event and the email
+   with the "Send deposit message on WhatsApp" button.
+4. Delete the test rows and events afterwards (set Status to Cancelled first to remove the event).
+
+
+DAY TO DAY (for Nastasija, all in the Studio dashboard)
+- New booking email arrives > tap "Send deposit message on WhatsApp" > Send.
+  (Or open the booking in the dashboard and tap "Send deposit message".)
+- Deposit received > open the booking > Status "Deposit paid" > Save.
+  The calendar event turns green and says CONFIRMED.
+- After the appointment > Status "Completed". The client's visit count and history update.
+- Cancelled > Status "Cancelled". The calendar event is removed and the time opens up again.
+- No show > Status "No show".
+- Consultations: open the call > Confirmed, Done or Cancelled.
+- Client notes (allergies, skin type, colours used): Clients > open the client > Private notes > Save.
+- Time off: Block time tab, or add an event straight into her Google Calendar.
+- She stays logged in on her phone for 30 days. "Log out" ends it on that device.
+- After 8 wrong passwords, logging in pauses for 15 minutes.
+
+EXISTING CLIENTS
+Returning clients are recognised by their mobile number. Clients from before the website
+won't be in the list yet, so add them in the dashboard: Clients > Add client
+(name, mobile, optional notes). After that they can book as returning clients.
+
+PRIVACY
+The website only asks "is this number a client: yes or no". Names and treatment history
+are never sent back to the website; they stay in her sheet, calendar and email.
+
+IF YOU CHANGE THE CODE LATER
+Deploy > Manage deployments > edit (pencil) > Version: New version > Deploy.
+The URL stays the same, so the website doesn't need changing.
+
+FULLY AUTOMATIC WHATSAPP (optional, later)
+Right now the deposit message is sent by Nastasija with one tap. Sending it with no tap
+at all needs the paid WhatsApp Business Platform (Meta approval, a message template and a
+small fee per message). It can be added to this script later if she wants it.
