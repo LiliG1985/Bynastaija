@@ -1554,10 +1554,11 @@ function renderAgenda(){
   D.consultations.forEach(c=>{ if(c.Status==="Cancelled") return; if(!ADM.showPast&&c.Date<T) return; add(c.Date,c.Time,consultItem(c)); });
   (D.blocked||[]).forEach(x=>{ const d=x.start.slice(0,10); if(!ADM.showPast&&d<T) return; add(d,x.start.slice(11),`<div class="item s-block"><span class="t">${esc(x.start.slice(11))}<small>to ${esc(x.end.slice(5).replace(" "," · "))}</small></span><span class="w"><b>Blocked</b><span>${esc(x.title)}</span></span></div>`); });
   const days=Object.keys(byDay).sort();
-  $("#admPane").innerHTML=`<div class="adm-tools"><label class="check" style="align-items:center"><input type="checkbox" id="admPast" ${ADM.showPast?"checked":""}> Show past appointments</label></div>`+
+  $("#admPane").innerHTML=`<div class="adm-tools" style="justify-content:space-between;align-items:center"><label class="check" style="align-items:center"><input type="checkbox" id="admPast" ${ADM.showPast?"checked":""}> Show past appointments</label><button type="button" class="sbtn gold" data-add-appt>Add appointment</button></div>`+
     (days.length?days.map(d=>`<div class="day"><h3 class="${d===T?"today":""}"><span>${d===T?"Today · ":""}${esc(prettyDay(d))}</span><span>${byDay[d].length}</span></h3>${byDay[d].sort((a,b)=>a[0]<b[0]?-1:1).map(x=>x[1]).join("")}</div>`).join("")
       :`<div class="empty-s">No upcoming appointments yet. New bookings from the website appear here straight away.</div>`);
   $("#admPast").onchange=e=>{ ADM.showPast=e.target.checked; renderAgenda(); };
+  $$("#admPane [data-add-appt]").forEach(b=>b.onclick=()=>openAddAppt());
   wireOpen();
 }
 function renderBookings(){
@@ -1565,10 +1566,11 @@ function renderBookings(){
   let list=D.bookings.filter(b=>(ADM.filter==="all"||b.Status===ADM.filter)&&(!q||[b.Name,b.Phone,b.Ref,b.Treatment].join(" ").toLowerCase().includes(q)));
   list.sort((a,b)=>(b.Date+b.Start).localeCompare(a.Date+a.Start));
   $("#admPane").innerHTML=`<div class="adm-tools"><input id="admQ" placeholder="Search name, phone, treatment or reference" value="${esc(ADM.q)}">
-    <select id="admF"><option value="all">All statuses</option>${BOOK_ST.map(s=>`<option ${ADM.filter===s?"selected":""}>${s}</option>`).join("")}</select></div>`+
+    <select id="admF"><option value="all">All statuses</option>${BOOK_ST.map(s=>`<option ${ADM.filter===s?"selected":""}>${s}</option>`).join("")}</select><button type="button" class="sbtn gold" data-add-appt>Add appointment</button></div>`+
     (list.length?list.map(b=>`<div class="day" style="margin-bottom:6px">${bookingItem(b).replace('<span class="t">',`<span class="t">${esc(shortDay(b.Date))}<br>`)}</div>`).join(""):`<div class="empty-s">No bookings match.</div>`);
   $("#admQ").oninput=e=>{ ADM.q=e.target.value; const pos=e.target.selectionStart; renderBookings(); const i=$("#admQ"); i.focus(); i.setSelectionRange(pos,pos); };
   $("#admF").onchange=e=>{ ADM.filter=e.target.value; renderBookings(); };
+  $$("#admPane [data-add-appt]").forEach(b=>b.onclick=()=>openAddAppt());
   wireOpen();
 }
 function renderClients(){
@@ -1691,14 +1693,91 @@ function openDay(ds){
   const label={free:"Free all day",part:"Some times free",full:"Fully booked",blocked:"Blocked",closed:"Closed",past:"Past"}[st];
   const list=items.map(x=>x.k==="x"
     ?`<div class="item s-block"><span class="t">${esc(x.from)}<small>to ${esc(x.to)}</small></span><span class="w"><b>Blocked</b><span>${esc(x.t)}</span></span></div>`
-    :`<button type="button" class="item s-${x.k==="c"?"consult":(ST_CLASS[x.st]||"reserved")}" data-open="${x.k}:${esc(x.ref)}"><span class="t">${esc(x.from)}<small>to ${esc(x.to)}</small></span><span class="w"><b>${esc(x.n)}</b><span>${esc(x.t)}</span></span></button>`).join("");
+    :`<button type="button" class="item s-${x.k==="c"?"consult":(ST_CLASS[x.st]||"reserved")}" data-open="${x.k}:${esc(x.ref)}"><span class="t">${esc(x.from)}<small>to ${esc(x.to)}</small></span><span class="w"><b>${esc(x.n)}</b><span>${esc(x.t)}</span></span>${x.k==="b"?`<span class="pill2 s-${ST_CLASS[x.st]||"reserved"}">${esc(x.st==="Reserved, awaiting deposit"?"Awaiting deposit":x.st)}</span>`:""}</button>`).join("");
   openDrawer(`<p class="eyebrow gold">${esc(label)}</p><h2>${esc(prettyDay(ds))}</h2>
     ${free&&st!=="past"?`<div style="display:grid;gap:8px"><p class="eyebrow">Free times</p>${free.length?`<div class="yr-free">${free.map(([a,b])=>`<span>${hm(a)} to ${hm(b)}</span>`).join("")}</div>`:`<p class="note">No free time left this day.</p>`}</div>`:""}
     <div style="display:grid;gap:8px"><p class="eyebrow">Appointments</p>${list||`<p class="note">Nothing booked.</p>`}</div>
-    ${free&&st!=="past"&&st!=="blocked"?`<div class="row-btns"><button type="button" class="sbtn" id="dyBlock">Block this day</button></div>`:""}
+    <div class="row-btns"><button type="button" class="sbtn gold" id="dyAdd">Add appointment</button>${free&&st!=="past"&&st!=="blocked"?`<button type="button" class="sbtn" id="dyBlock">Block this day</button>`:""}</div>
     <p class="note">Free times allow for lunch (${CONFIG.lunch.start} to ${CONFIG.lunch.end}) and ${CONFIG.bufferMins} minutes between clients. Anything else in your Google Calendar also counts as busy.</p>`);
   $$("#admDrawerPane [data-open]").forEach(el=>el.onclick=()=>{ const [k,id]=el.dataset.open.split(/:(.+)/); if(k==="b") openBooking(id); else openConsult(id); });
+  $("#dyAdd").onclick=()=>openAddAppt({date:ds,time:free&&free.length&&st!=="past"?hm(free[0][0]):""});
   if($("#dyBlock")) $("#dyBlock").onclick=()=>{ closeDrawer(); ADM.tab="block"; admRender(); $("#blk-d").value=ds; $("#blk-d2").value=ds; $("#blk-r").focus(); };
+}
+
+
+/* ================= dashboard: add an appointment by hand ================= */
+function openAddAppt(pref){
+  pref=pref||{};
+  const T=todayStr(), date=pref.date||T;
+  const groups=CATS.filter(c=>SERVICES.some(x=>x.cat===c.id)).map(c=>`<optgroup label="${esc(c.title)}">${SERVICES.filter(x=>x.cat===c.id).map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join("")}</optgroup>`).join("");
+  openDrawer(`<p class="eyebrow gold">New appointment</p><h2>Add an appointment</h2>
+    <p class="note">For clients who message you directly, friends, or appointments booked before the website. It goes straight into your diary and Google Calendar. No message is sent to the client.</p>
+    <div class="fields">
+      <div class="field full"><label for="ap-n">Client name</label><input id="ap-n" value="${esc(pref.name||"")}"></div>
+      <div class="field"><label for="ap-p">Mobile (optional)</label><input id="ap-p" type="tel" placeholder="05X XXX XXXX" value="${esc(pref.phone?"0"+String(normPhone(pref.phone)).replace(/^971/,""):"")}"></div>
+      <div class="field"><label for="ap-e">Email (optional)</label><input id="ap-e" type="email" value="${esc(pref.email||"")}"></div>
+      <div class="field full"><label for="ap-s">Treatment</label><select id="ap-s">${groups}<option value="custom">Something else (type it below)</option></select></div>
+      <div class="field full" id="ap-cw" hidden><label for="ap-c">Treatment name</label><input id="ap-c" placeholder="e.g. Brow shape and tint"></div>
+      <div class="field full"><span class="flabel">Add ons</span><div class="chips2">${Object.entries(ADDONS).map(([k,a])=>`<label class="chip2"><input type="checkbox" name="ap-a" value="${k}"><span>${esc(a.name)}</span></label>`).join("")}</div></div>
+      <div class="field"><label for="ap-d">Date</label><input id="ap-d" type="date" value="${date}"></div>
+      <div class="field"><label for="ap-t">Start time</label><input id="ap-t" type="time" step="300" value="${pref.time||""}"></div>
+      <div class="field"><label for="ap-m">Length (minutes)</label><input id="ap-m" type="number" min="5" step="5"></div>
+      <div class="field"><label for="ap-pr">Price (AED)</label><input id="ap-pr" type="number" min="0" step="10"></div>
+      <div class="field full"><span class="flabel">Deposit</span><div class="chips2" id="ap-st">
+        <label class="chip2"><input type="radio" name="ap-st" value="Reserved, awaiting deposit"><span>Not paid yet</span></label>
+        <label class="chip2"><input type="radio" name="ap-st" value="Deposit paid"><span>Deposit paid</span></label>
+        <label class="chip2"><input type="radio" name="ap-st" value="Completed"><span>Already done (past)</span></label></div></div>
+      <div class="field full"><label for="ap-no">Notes</label><textarea id="ap-no" rows="2"></textarea></div>
+    </div>
+    <p class="note" id="ap-sum"></p>
+    <p class="adm-msg" id="drMsg"></p>
+    <div class="row-btns"><button type="button" class="sbtn gold" id="apSave">Add to diary</button></div>`);
+  const calc=()=>{
+    const sv=SERVICES.find(x=>x.id===$("#ap-s").value), ad=$$('[name="ap-a"]:checked').map(x=>ADDONS[x.value]);
+    $("#ap-cw").hidden=$("#ap-s").value!=="custom";
+    $("#ap-m").value=(sv?sv.mins:60)+ad.reduce((a,x)=>a+x.mins,0);
+    $("#ap-pr").value=(sv?sv.price:0)+ad.reduce((a,x)=>a+x.price,0);
+    sum();
+  };
+  const sum=()=>{ if($("#apSave")){ $("#apSave").textContent="Add to diary"; $("#apSave").onclick=()=>save(false); } const t=$("#ap-t").value, m=Number($("#ap-m").value)||0, pr=Number($("#ap-pr").value)||0;
+    $("#ap-sum").textContent=(t?`${t} to ${hm(toMin(t)+m)} · `:"")+`${pr} AED · 50% deposit ${Math.round(pr*CONFIG.depositPercent/100)} AED`; };
+  $("#ap-s").onchange=calc; $$('[name="ap-a"]').forEach(x=>x.onchange=calc);
+  ["ap-t","ap-m","ap-pr"].forEach(id=>$("#"+id).oninput=sum);
+  const setSt=()=>{ const past=$("#ap-d").value&&$("#ap-d").value<T; $$('[name="ap-st"]').forEach(r=>r.checked=r.value===(past?"Completed":"Deposit paid")); };
+  $("#ap-d").onchange=setSt; setSt(); calc();
+  const save=async(force)=>{
+    const st=($('[name="ap-st"]:checked')||{}).value, sid=$("#ap-s").value, pv=$("#ap-p").value.trim();
+    const p={service:sid==="custom"?"":sid,customName:$("#ap-c").value.trim(),addons:$$('[name="ap-a"]:checked').map(x=>x.value),
+      name:$("#ap-n").value.trim(),phone:pv?normPhone(pv):"",email:$("#ap-e").value.trim(),date:$("#ap-d").value,time:$("#ap-t").value,
+      mins:Number($("#ap-m").value),price:Number($("#ap-pr").value),status:st,notes:$("#ap-no").value.trim(),force:!!force};
+    let err="";
+    if(!p.name) err="Please add the client’s name.";
+    else if(pv&&!phoneOk(pv)) err="Please check the mobile number, or leave it empty.";
+    else if(sid==="custom"&&!p.customName) err="Please type the treatment name.";
+    else if(!p.date||!p.time) err="Please add the date and start time.";
+    else if(!(p.mins>0)) err="Please add the length in minutes.";
+    else if(!st) err="Please choose the deposit status.";
+    $("#drMsg").textContent=err; if(err) return;
+    // clash check against the diary (the server also checks your Google Calendar)
+    const s0=toMin(p.time), e0=s0+p.mins;
+    const clash=(admItemsByDay()[p.date]||[]).filter(x=>toMin(x.from)<e0&&toMin(x.to)>s0);
+    const ask=t=>{ $("#drMsg").textContent=t+" Tap Add it anyway if that’s right."; $("#apSave").textContent="Add it anyway"; $("#apSave").onclick=()=>save(true); };
+    if(!force&&clash.length){ ask(`This overlaps with ${clash.map(x=>(x.n||x.t)+" "+x.from+" to "+x.to).join(", ")}.`); return; }
+    $("#apSave").disabled=true; $("#drMsg").textContent="Saving…";
+    const r=await admCall("admin_book",p).catch(()=>null);
+    $("#apSave").disabled=false;
+    if(r&&r.error==="clash"){ ask(r.message); return; }
+    if(!(r&&r.ok)){ $("#drMsg").textContent=(r&&r.message)||"Couldn't save. Please try again."; return; }
+    const sv=SERVICES.find(x=>x.id===sid), addonNames=p.addons.map(k=>ADDONS[k].name).join(", ");
+    const b={Ref:r.ref||localRef("BN-"),Created:todayStr(),Status:st,Date:p.date,Start:p.time,End:r.end||hm(e0),Treatment:sv?sv.name:p.customName,"Add ons":addonNames,
+      Name:p.name,Phone:p.phone?"+"+p.phone:"",Email:p.email,"Total (AED)":p.price,"50% deposit (AED)":Math.round(p.price*CONFIG.depositPercent/100),Notes:p.notes,"Client type":"Added by Nastasija"};
+    ADM.data.bookings.push(b);
+    if(p.phone&&!ADM.data.clients.some(c=>normPhone(c.Phone)===p.phone)) ADM.data.clients.push({Phone:"+"+p.phone,Name:p.name,Email:p.email,"First contact":todayStr(),"Last booking":p.date,"Completed visits":st==="Completed"?1:0,Bookings:1,"Treatment history":"","Private notes":""});
+    ADM.yearBusy={}; admRender(); loadBusy();
+    openBooking(b.Ref);
+    $("#drMsg").textContent=ADM.demo?"Demo: added on this screen only (not saved).":"Added to your diary and Google Calendar.";
+  };
+  $("#apSave").onclick=()=>save(false);
 }
 
 function wireOpen(){ $$("#admPane [data-open]").forEach(el=>el.onclick=()=>{ const [k,id]=el.dataset.open.split(/:(.+)/); if(k==="b") openBooking(id); else if(k==="c") openConsult(id); else openClient(id); }); }
@@ -1796,10 +1875,11 @@ function openClient(phone){
     <div class="field full"><label for="cl-e">Email</label><input id="cl-e" type="email" value="${esc(c?c.Email:"")}"></div>
     <div class="field full"><label for="cl-no">Private notes (allergies, skin type, colours used…)</label><textarea id="cl-no">${esc(c?c["Private notes"]:"")}</textarea></div></div>
     <p class="adm-msg" id="drMsg"></p>
-    <div class="row-btns"><button type="button" class="sbtn gold" id="clSave">${c?"Save changes":"Add client"}</button>${phone?`<a class="sbtn" target="_blank" rel="noopener" href="${wa(phone)}">WhatsApp</a>`:""}${forms.map((f,i)=>`<button type="button" class="sbtn" data-form="${esc(f.id)}">Consultation form${forms.length>1?" "+esc(String(f.received).slice(0,10)):""}</button>`).join("")}</div>
+    <div class="row-btns"><button type="button" class="sbtn gold" id="clSave">${c?"Save changes":"Add client"}</button>${c?`<button type="button" class="sbtn" id="clAppt">Add appointment</button>`:""}${phone?`<a class="sbtn" target="_blank" rel="noopener" href="${wa(phone)}">WhatsApp</a>`:""}${forms.map((f,i)=>`<button type="button" class="sbtn" data-form="${esc(f.id)}">Consultation form${forms.length>1?" "+esc(String(f.received).slice(0,10)):""}</button>`).join("")}</div>
     ${c?`<div style="display:grid;gap:8px"><p class="eyebrow">Treatment history</p><div class="hist">${hist.length?hist.map(b=>`<div><span>${esc(shortDay(b.Date))}</span><span>${esc(b.Treatment)}</span><span class="pill2 s-${ST_CLASS[b.Status]||"reserved"}">${esc(b.Status==="Reserved, awaiting deposit"?"Awaiting deposit":b.Status)}</span></div>`).join(""):`<div><span></span><span class="note">No treatments booked yet</span><span></span></div>`}
       ${cons.map(x=>`<div><span>${esc(shortDay(x.Date))}</span><span>Free consultation</span><span class="pill2 s-consult">${esc(x.Status)}</span></div>`).join("")}</div></div>`:""}`);
   $$("#admDrawerPane [data-form]").forEach(b=>b.onclick=()=>openForm(b.dataset.form));
+  if($("#clAppt")) $("#clAppt").onclick=()=>openAddAppt({name:c.Name,phone:c.Phone,email:c.Email});
   $("#clSave").onclick=async()=>{
     const pv=$("#cl-p").value;
     if(!phoneOk(pv)){ $("#drMsg").textContent="Please enter a valid mobile number."; return; }
