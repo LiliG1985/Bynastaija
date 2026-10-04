@@ -83,9 +83,9 @@ const CONSULT_STATUSES = ['Reserved', 'Confirmed', 'Done', 'Cancelled'];
 
 const HEAD = {
   Bookings: ['Ref', 'Created', 'Status', 'Date', 'Start', 'End', 'Treatment', 'Add ons', 'Name', 'Phone', 'Email',
-             'Total (AED)', '50% deposit (AED)', 'Notes', 'Client type', 'Send deposit message', 'Calendar event id'],
+             'Total (AED)', '50% deposit (AED)', 'Notes', 'Client type', 'Send deposit message', 'Calendar event id', 'Treatment notes'],
   Consultations: ['Ref', 'Created', 'Status', 'Date', 'Time', 'Type', 'Name', 'Phone', 'Email', 'Interested in',
-                  'Concerns', 'WhatsApp client', 'Calendar event id', 'Form'],
+                  'Concerns', 'WhatsApp client', 'Calendar event id', 'Form', 'Treatment notes'],
   Clients: ['Phone', 'Name', 'Email', 'First contact', 'Last booking', 'Completed visits', 'Bookings', 'Treatment history', 'Private notes'],
   Messages: ['Received', 'Name', 'Phone', 'Email', 'Subject', 'Message'],
   'Consultation forms': ['Form id', 'Received', 'Consult ref', 'Name', 'Phone', 'Email', 'Needs attention', 'Answers', 'Signature']
@@ -582,6 +582,22 @@ function admin_(d) {
     return { ok: true };
   }
   if (a === 'admin_logout') { PropertiesService.getScriptProperties().deleteProperty('sess_' + hash_(String(d.token))); return { ok: true }; }
+  if (a === 'admin_note') {
+    const name = d.kind === 'consult' ? 'Consultations' : 'Bookings';
+    const sh = sheet_(name);
+    const row = findRowByRef_(name, d.ref); if (row < 0) return { ok: false, message: 'Appointment not found' };
+    const col = HEAD[name].indexOf('Treatment notes') + 1;
+    const note = String(d.note == null ? '' : d.note).trim().slice(0, 5000);
+    sh.getRange(row, col).setValue(/^[=+\-@]/.test(note) ? "'" + note : note);
+    // keep a copy on the calendar event too
+    const evId = sh.getRange(row, HEAD[name].indexOf('Calendar event id') + 1).getValue();
+    const ev = evId ? cal_().getEventById(String(evId)) : null;
+    if (ev) {
+      const desc = String(ev.getDescription() || '').replace(/\n*Treatment notes:[\s\S]*$/, '');
+      ev.setDescription(desc + (note ? '\n\nTreatment notes:\n' + note : ''));
+    }
+    return { ok: true };
+  }
   if (a === 'admin_status') {
     const name = d.kind === 'consult' ? 'Consultations' : 'Bookings';
     const list = name === 'Bookings' ? BOOKING_STATUSES : CONSULT_STATUSES;

@@ -416,7 +416,9 @@ body.no-wa footer{padding-bottom:0}
 .fm-view .sigimg{background:#fff;border:1px solid var(--line);max-width:300px;width:100%}
 .fm-flag{color:var(--err)}
 .hist{display:grid;gap:6px}
-.hist div{display:grid;grid-template-columns:96px 1fr auto;gap:10px;align-items:center;font-size:.84rem;background:var(--white);border:1px solid var(--line);padding:10px 12px}
+.hist div,.hist button{display:grid;grid-template-columns:96px 1fr auto;gap:10px;align-items:center;font:inherit;font-size:.84rem;color:inherit;text-align:left;width:100%;background:var(--white);border:1px solid var(--line);padding:10px 12px}
+.hist button{cursor:pointer}.hist button:hover{border-color:var(--champagne-d)}
+.hnote{display:block;color:var(--muted);font-size:.76rem;margin-top:3px;white-space:pre-line;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}.hnote.add{color:var(--champagne-d)}
 .row-btns{display:flex;gap:8px;flex-wrap:wrap}
 .adm-msg{font-size:.86rem;min-height:1.2em}
 .cl-row{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) auto auto;gap:12px;align-items:center;background:var(--white);border:1px solid var(--line);padding:12px 16px;cursor:pointer;width:100%;text-align:left;font:inherit;color:inherit}
@@ -1824,7 +1826,9 @@ function openBooking(ref){
   openDrawer(`<p class="eyebrow gold">Booking ${esc(b.Ref)}</p><h2>${esc(b.Name)}</h2>
     <dl class="kv"><dt>Treatment</dt><dd>${esc(b.Treatment)}${b["Add ons"]?" + "+esc(b["Add ons"]):""}</dd><dt>When</dt><dd>${esc(prettyDay(b.Date))}, ${esc(b.Start)} to ${esc(b.End)}</dd>
     <dt>Total</dt><dd>${esc(b["Total (AED)"])} AED</dd><dt>50% deposit</dt><dd>${esc(b["50% deposit (AED)"])} AED</dd><dt>Phone</dt><dd>${esc(b.Phone)}</dd><dt>Email</dt><dd>${esc(b.Email||"none")}</dd>
-    <dt>Client</dt><dd>${esc(b["Client type"])}</dd><dt>Notes</dt><dd>${esc(b.Notes||"none")}</dd><dt>Booked</dt><dd>${esc(b.Created)}</dd></dl>
+    <dt>Client</dt><dd>${esc(b["Client type"])}</dd><dt>Client’s note</dt><dd>${esc(b.Notes||"none")}</dd><dt>Booked</dt><dd>${esc(b.Created)}</dd></dl>
+    <div class="field"><label for="dr-tn">Treatment notes (only you see these)</label><textarea id="dr-tn" rows="4" placeholder="What you did, products and colours used, depth, how the skin reacted, what to do next time…">${esc(b["Treatment notes"]||"")}</textarea></div>
+    <div class="row-btns" style="margin-top:-6px"><button type="button" class="sbtn" id="drNoteSave">Save notes</button><span class="note" id="drNoteMsg"></span></div>
     <div class="field"><label for="dr-st">Status</label><select id="dr-st">${BOOK_ST.map(s=>`<option ${s===b.Status?"selected":""}>${s}</option>`).join("")}</select></div>
     <p class="adm-msg" id="drMsg"></p>
     <div class="row-btns"><button type="button" class="sbtn gold" id="drSave">Save status</button>
@@ -1840,6 +1844,16 @@ function openBooking(ref){
     else $("#drMsg").textContent=(r&&r.message)||"Couldn't save. Please try again.";
   };
   $("#drClient").onclick=()=>openClient(p);
+  wireNote("booking",b);
+}
+function wireNote(kind,obj){
+  $("#drNoteSave").onclick=async()=>{
+    const note=$("#dr-tn").value; $("#drNoteSave").disabled=true; $("#drNoteMsg").textContent="Saving…";
+    const r=await admCall("admin_note",{kind,ref:obj.Ref,note}).catch(()=>null);
+    $("#drNoteSave").disabled=false;
+    if(r&&r.ok){ obj["Treatment notes"]=note.trim(); $("#drNoteMsg").textContent=ADM.demo?"Demo: saved on this screen only.":"Notes saved."; }
+    else $("#drNoteMsg").textContent=(r&&r.message)||"Couldn't save. Please try again.";
+  };
 }
 function formsOf(phone){ return ((ADM.data&&ADM.data.forms)||[]).filter(f=>normPhone(f.phone)===phone).sort((a,b)=>String(b.received).localeCompare(String(a.received))); }
 function formFor(c){ const fs=(ADM.data&&ADM.data.forms)||[]; return fs.find(f=>f.ref&&f.ref===c.Ref)||null; }
@@ -1876,10 +1890,13 @@ function openConsult(ref){
     <dl class="kv"><dt>Type</dt><dd>Free ${esc(String(c.Type).toLowerCase())}</dd><dt>When</dt><dd>${esc(prettyDay(c.Date))} at ${esc(c.Time)}</dd><dt>Phone</dt><dd>${esc(c.Phone)}</dd>
     <dt>Email</dt><dd>${esc(c.Email||"none")}</dd><dt>Interested in</dt><dd>${esc(c["Interested in"])}</dd><dt>Concerns</dt><dd>${esc(c.Concerns||"none")}</dd>
     <dt>Form</dt><dd>${ff?`Received ${esc(ff.received)}${ff.attention&&ff.attention!=="None"?` · <span class="fm-flag">needs attention</span>`:""}`:"Not received yet"}</dd></dl>
+    <div class="field"><label for="dr-tn">Call notes (only you see these)</label><textarea id="dr-tn" rows="4" placeholder="What you discussed, what you recommended, next steps…">${esc(c["Treatment notes"]||"")}</textarea></div>
+    <div class="row-btns" style="margin-top:-6px"><button type="button" class="sbtn" id="drNoteSave">Save notes</button><span class="note" id="drNoteMsg"></span></div>
     <div class="field"><label for="dr-st">Status</label><select id="dr-st">${CONS_ST.map(s=>`<option ${s===c.Status?"selected":""}>${s}</option>`).join("")}</select></div>
     <p class="adm-msg" id="drMsg"></p>
     <div class="row-btns"><button type="button" class="sbtn gold" id="drSave">Save status</button><a class="sbtn" target="_blank" rel="noopener" href="${wa(p,msg)}">Confirm on WhatsApp</a>${ff?`<button type="button" class="sbtn" id="drForm">View form</button>`:`<a class="sbtn" target="_blank" rel="noopener" href="${wa(p,remind)}">Send form link</a>`}<button type="button" class="sbtn" id="drClient">Client profile</button></div>`);
   if(ff) $("#drForm").onclick=()=>openForm(ff.id);
+  wireNote("consult",c);
   $("#drSave").onclick=async()=>{
     const st=$("#dr-st").value; $("#drSave").disabled=true;
     const r=await admCall("admin_status",{kind:"consult",ref:c.Ref,status:st}).catch(()=>null);
@@ -1903,9 +1920,10 @@ function openClient(phone){
     <div class="field full"><label for="cl-no">Private notes (optional): allergies, skin type, colours used…</label><textarea id="cl-no">${esc(c?c["Private notes"]:"")}</textarea></div></div>
     <p class="adm-msg" id="drMsg"></p>
     <div class="row-btns"><button type="button" class="sbtn gold" id="clSave">${c?"Save changes":"Add client"}</button>${c?`<button type="button" class="sbtn" id="clAppt">Add appointment</button>`:""}${phone?`<a class="sbtn" target="_blank" rel="noopener" href="${wa(phone)}">WhatsApp</a>`:""}${forms.map((f,i)=>`<button type="button" class="sbtn" data-form="${esc(f.id)}">Consultation form${forms.length>1?" "+esc(String(f.received).slice(0,10)):""}</button>`).join("")}</div>
-    ${c?`<div style="display:grid;gap:8px"><p class="eyebrow">Treatment history</p><div class="hist">${hist.length?hist.map(b=>`<div><span>${esc(shortDay(b.Date))}</span><span>${esc(b.Treatment)}</span><span class="pill2 s-${ST_CLASS[b.Status]||"reserved"}">${esc(b.Status==="Reserved, awaiting deposit"?"Awaiting deposit":b.Status)}</span></div>`).join(""):`<div><span></span><span class="note">No treatments booked yet</span><span></span></div>`}
-      ${cons.map(x=>`<div><span>${esc(shortDay(x.Date))}</span><span>Free consultation</span><span class="pill2 s-consult">${esc(x.Status)}</span></div>`).join("")}</div></div>`:""}`);
+    ${c?`<div style="display:grid;gap:8px"><p class="eyebrow">Treatment history</p><div class="hist">${hist.length?hist.map(b=>`<button type="button" data-hopen="b:${esc(b.Ref)}"><span>${esc(shortDay(b.Date))}</span><span>${esc(b.Treatment)}${b["Treatment notes"]?`<small class="hnote">${esc(b["Treatment notes"])}</small>`:`<small class="hnote add">Tap to add notes</small>`}</span><span class="pill2 s-${ST_CLASS[b.Status]||"reserved"}">${esc(b.Status==="Reserved, awaiting deposit"?"Awaiting deposit":b.Status)}</span></button>`).join(""):`<div><span></span><span class="note">No treatments booked yet</span><span></span></div>`}
+      ${cons.map(x=>`<button type="button" data-hopen="c:${esc(x.Ref)}"><span>${esc(shortDay(x.Date))}</span><span>Free consultation${x["Treatment notes"]?`<small class="hnote">${esc(x["Treatment notes"])}</small>`:""}</span><span class="pill2 s-consult">${esc(x.Status)}</span></button>`).join("")}</div></div>`:""}`);
   $$("#admDrawerPane [data-form]").forEach(b=>b.onclick=()=>openForm(b.dataset.form));
+  $$("#admDrawerPane [data-hopen]").forEach(el=>el.onclick=()=>{ const [k,id]=el.dataset.hopen.split(/:(.+)/); if(k==="b") openBooking(id); else openConsult(id); });
   if($("#clAppt")) $("#clAppt").onclick=()=>openAddAppt({name:c.Name,phone:c.Phone,email:c.Email});
   $("#clSave").onclick=async()=>{
     const pv=$("#cl-p").value;
