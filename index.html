@@ -1043,7 +1043,7 @@ const CONFIG = {
   location: "Dubai, UAE · address sent on confirmation",
   openDays: [1,2,3,4,5,6],             // 0=Sun … 6=Sat
   open: "10:00", close: "19:00",
-  lunch: { start: "13:00", end: "14:00" },  // daily lunch break, never bookable
+  lunch: null,                          // no lunch break (to add one back: { start: "13:00", end: "14:00" })
   bufferMins: 10,                       // gap between clients
   consultTimes: ["09:00","09:30","19:00","19:30","20:00"],
   consultMins: 20,
@@ -1192,7 +1192,7 @@ function treatmentSlots(d, mins){
   if(!CONFIG.openDays.includes(d.getDay())) return [];
   const open=toMin(CONFIG.open), close=toMin(CONFIG.close), buf=CONFIG.bufferMins;
   const blocks=busyOn(d).map(([a,b])=>[a-buf,b+buf]);          // keep 10 min between clients
-  blocks.push([toMin(CONFIG.lunch.start),toMin(CONFIG.lunch.end)]); // lunch break
+  if(CONFIG.lunch) blocks.push([toMin(CONFIG.lunch.start),toMin(CONFIG.lunch.end)]); // lunch break
   const cands=new Set();
   for(let m=open;m<=close;m+=30) cands.add(m);
   blocks.forEach(([,b])=>{ const r=Math.ceil(b/5)*5; if(r>=open) cands.add(r); });
@@ -1672,11 +1672,11 @@ function admYearBusy(y){
   return "loading";
 }
 function dayFree(dstr,items,ybusy){
-  // free windows inside opening hours, after lunch, appointments and the gap between clients
+  // free windows inside opening hours, after appointments and the gap between clients
   const [y,m,d]=dstr.split("-").map(Number), day=new Date(y,m-1,d);
   if(!CONFIG.openDays.includes(day.getDay())) return null;
   const O=toMin(CONFIG.open), C=toMin(CONFIG.close), buf=CONFIG.bufferMins;
-  let taken=[[toMin(CONFIG.lunch.start),toMin(CONFIG.lunch.end)]];
+  let taken=CONFIG.lunch?[[toMin(CONFIG.lunch.start),toMin(CONFIG.lunch.end)]]:[];
   (items||[]).forEach(x=>taken.push([toMin(x.from)-(x.k==="x"?0:buf),toMin(x.to)+(x.k==="x"?0:buf)]));
   if(Array.isArray(ybusy)){ const s=new Date(day), e=new Date(day); e.setDate(e.getDate()+1);
     ybusy.forEach(([a,b])=>{ if(a<e&&b>s) taken.push([Math.max(0,(a-s)/60000)-buf,Math.min(1440,(b-s)/60000)+buf]); }); }
@@ -1691,7 +1691,7 @@ function dayStatus(dstr,items,ybusy){
   const free=dayFree(dstr,items,ybusy);
   if(free===null) return "closed";
   if(dstr<T) return "past";
-  const open=toMin(CONFIG.close)-toMin(CONFIG.open)-(toMin(CONFIG.lunch.end)-toMin(CONFIG.lunch.start));
+  const open=toMin(CONFIG.close)-toMin(CONFIG.open)-(CONFIG.lunch?toMin(CONFIG.lunch.end)-toMin(CONFIG.lunch.start):0);
   const freeMin=free.reduce((a,[s,e])=>a+(e-s),0);
   if((items||[]).some(x=>x.k==="x")&&freeMin===0) return "blocked";
   if(freeMin>=open-1) return "free";
@@ -1732,7 +1732,7 @@ function openDay(ds){
     ${free&&st!=="past"?`<div style="display:grid;gap:8px"><p class="eyebrow">Free times</p>${free.length?`<div class="yr-free">${free.map(([a,b])=>`<span>${hm(a)} to ${hm(b)}</span>`).join("")}</div>`:`<p class="note">No free time left this day.</p>`}</div>`:""}
     <div style="display:grid;gap:8px"><p class="eyebrow">Appointments</p>${list||`<p class="note">Nothing booked.</p>`}</div>
     <div class="row-btns"><button type="button" class="sbtn gold" id="dyAdd">Add appointment</button>${free&&st!=="past"&&st!=="blocked"?`<button type="button" class="sbtn" id="dyBlock">Block this day</button>`:""}</div>
-    <p class="note">Free times allow for lunch (${CONFIG.lunch.start} to ${CONFIG.lunch.end}) and ${CONFIG.bufferMins} minutes between clients. Anything else in your Google Calendar also counts as busy.</p>`);
+    <p class="note">Free times allow ${CONFIG.lunch?`for lunch (${CONFIG.lunch.start} to ${CONFIG.lunch.end}) and `:""}${CONFIG.bufferMins} minutes between clients. Anything else in your Google Calendar also counts as busy.</p>`);
   $$("#admDrawerPane [data-open]").forEach(el=>el.onclick=()=>{ const [k,id]=el.dataset.open.split(/:(.+)/); if(k==="b") openBooking(id); else openConsult(id); });
   $("#dyAdd").onclick=()=>openAddAppt({date:ds,time:free&&free.length&&st!=="past"?hm(free[0][0]):""});
   if($("#dyBlock")) $("#dyBlock").onclick=()=>{ closeDrawer(); ADM.tab="block"; admRender(); $("#blk-d").value=ds; $("#blk-d2").value=ds; $("#blk-r").focus(); };
