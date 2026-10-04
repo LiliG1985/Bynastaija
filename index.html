@@ -1478,9 +1478,16 @@ function admLoad(){ try{ const v=JSON.parse(localStorage.getItem("bn_admin")||se
 function admSay(t,isErr){ const el=$("#admStatus"); el.textContent=t||""; el.className="adm-msg"+(isErr?" err":""); }
 async function admCall(action,payload){
   if(ADM.demo) return {ok:true,demo:true};
-  const r=await fetch(CONFIG.apiUrl,{method:"POST",body:JSON.stringify(Object.assign({action,token:ADM.token},payload||{}))});
-  const j=await r.json();
-  if(j&&j.error==="auth"){ admLogoutLocal(); $("#admErr").textContent="Your login has expired. Please log in again."; }
+  // give up after 40 seconds so the screen never just sits there
+  const ctl=new AbortController(), timer=setTimeout(()=>ctl.abort(),40000);
+  let j;
+  try{
+    const r=await fetch(CONFIG.apiUrl,{method:"POST",body:JSON.stringify(Object.assign({action,token:ADM.token},payload||{})),signal:ctl.signal});
+    const txt=await r.text();
+    try{ j=JSON.parse(txt); }catch(e){ j={ok:false,message:"The booking system sent an unexpected reply. In Apps Script, check the latest code is saved and deployed (New version)."}; }
+  }catch(e){ j={ok:false,message:e&&e.name==="AbortError"?"The booking system is taking too long. Please check your internet and try again.":"Couldn't reach the booking system. Please check your internet and try again."}; }
+  finally{ clearTimeout(timer); }
+  if(j&&j.error==="auth"){ closeDrawer(); admLogoutLocal(); $("#admErr").textContent="Your login has ended. Please log in again, then try once more."; }
   return j;
 }
 function admShowLogin(){ $("#admChecking").hidden=true; $("#admLogin").hidden=false; $("#admApp").hidden=true; $("#admDemo").hidden=!/demo/.test(location.search); }
@@ -1495,7 +1502,7 @@ async function admFetch(){
   admSay("Loading…");
   try{
     const r=await admCall("admin_data");
-    if(!r||!r.ok){ if(!(r&&r.error==="auth")){ admShowLogin(); $("#admErr").textContent=(r&&r.message)||"Couldn't load the dashboard. Please log in again."; } return; }
+    if(!r||!r.ok){ if(!(r&&r.error==="auth")){ if(ADM.data){ admSay((r&&r.message)||"Couldn't refresh. Please try again.",true); } else { admShowLogin(); $("#admErr").textContent=(r&&r.message)||"Couldn't load the dashboard. Please log in again."; } } return; }
     ADM.data=r.data; admSay(""); admRender();
   }catch(e){ if(ADM.data){ admSay("Couldn't reach the booking system. Check the internet connection and try Refresh.",true); } else { admShowLogin(); $("#admErr").textContent="Couldn't reach the booking system. Check the internet connection and try again."; } }
 }
@@ -1929,9 +1936,10 @@ function openClient(phone){
     const pv=$("#cl-p").value;
     if(!phoneOk(pv)){ $("#drMsg").textContent="Please enter the mobile number, for example 050 123 4567."; return; }
     const payload={phone:normPhone(pv),name:$("#cl-n").value.trim(),email:$("#cl-e").value.trim(),notes:$("#cl-no").value.trim()};
-    $("#clSave").disabled=true;
+    const btn=$("#clSave"), label=btn.textContent;
+    btn.disabled=true; btn.textContent="Saving…"; $("#drMsg").textContent="Saving, this can take a few seconds…";
     const r=await admCall("admin_client",payload).catch(()=>null);
-    $("#clSave").disabled=false;
+    btn.disabled=false; btn.textContent=label;
     if(r&&r.ok){
       let row=D.clients.find(x=>normPhone(x.Phone)===payload.phone);
       if(!row){ row={Phone:"+"+payload.phone,"First contact":todayStr(),"Completed visits":0,Bookings:0,"Last booking":""}; D.clients.push(row); }
