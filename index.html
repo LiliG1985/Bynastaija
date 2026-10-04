@@ -394,7 +394,7 @@ body.no-wa footer{padding-bottom:0}
 .item .w span{color:var(--muted);font-size:.82rem;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .item.s-reserved{border-left-color:#D9B45A}.item.s-paid{border-left-color:#7FA37A}.item.s-done{border-left-color:#B8AFA6}
 .item.s-cancel{border-left-color:#C98A84;opacity:.65}.item.s-noshow{border-left-color:#B5524A}.item.s-consult{border-left-color:#8FA9C2}.item.s-block{border-left-color:#B8AFA6;background:var(--nude)}
-@media (max-width:560px){.item{grid-template-columns:70px minmax(0,1fr)}.item .pill2{grid-column:2}}
+@media (max-width:560px){.item{grid-template-columns:70px minmax(0,1fr)}.item .pill2{grid-column:2}.item [data-unblock]{grid-column:2;justify-self:start!important}}
 .pill2{font:500 .56rem var(--sans);letter-spacing:.16em;text-transform:uppercase;padding:5px 8px;white-space:nowrap;background:var(--nude);justify-self:start}
 .pill2.s-reserved{background:#F4E6C4}.pill2.s-paid{background:#DCE8D8}.pill2.s-done{background:#ECE7E2}.pill2.s-cancel{background:#F2DEDB}.pill2.s-noshow{background:#EFCFCB}.pill2.s-consult{background:#DDE6EF}
 .empty-s{background:var(--white);border:1px dashed var(--cashmere);padding:24px;color:var(--muted);font-size:.9rem;text-align:center}
@@ -1564,7 +1564,7 @@ function renderAgenda(){
   const add=(d,sortKey,html)=>{ (byDay[d]=byDay[d]||[]).push([sortKey,html]); };
   D.bookings.forEach(b=>{ if(b.Status==="Cancelled") return; if(!ADM.showPast&&b.Date<T) return; add(b.Date,b.Start,bookingItem(b)); });
   D.consultations.forEach(c=>{ if(c.Status==="Cancelled") return; if(!ADM.showPast&&c.Date<T) return; add(c.Date,c.Time,consultItem(c)); });
-  (D.blocked||[]).forEach(x=>{ const d=x.start.slice(0,10); if(!ADM.showPast&&d<T) return; add(d,x.start.slice(11),`<div class="item s-block"><span class="t">${esc(x.start.slice(11))}<small>to ${esc(x.end.slice(5).replace(" "," · "))}</small></span><span class="w"><b>Blocked</b><span>${esc(x.title)}</span></span></div>`); });
+  (D.blocked||[]).forEach(x=>{ const d=x.start.slice(0,10); if(!ADM.showPast&&d<T) return; add(d,x.start.slice(11),`<div class="item s-block"><span class="t">${esc(x.start.slice(11))}<small>to ${esc(x.end.slice(5).replace(" "," · "))}</small></span><span class="w"><b>Blocked</b><span>${esc(x.title)}</span></span>${x.id?`<button type="button" class="sbtn" data-unblock="${esc(x.id)}" style="justify-self:end;align-self:center;cursor:pointer">Unblock</button>`:""}</div>`); });
   const days=Object.keys(byDay).sort();
   $("#admPane").innerHTML=`<div class="adm-tools" style="justify-content:space-between;align-items:center"><label class="check" style="align-items:center"><input type="checkbox" id="admPast" ${ADM.showPast?"checked":""}> Show past appointments</label><button type="button" class="sbtn gold" data-add-appt>Add appointment</button></div>`+
     (days.length?days.map(d=>`<div class="day"><h3 class="${d===T?"today":""}"><span>${d===T?"Today · ":""}${esc(prettyDay(d))}</span><span>${byDay[d].length}</span></h3>${byDay[d].sort((a,b)=>a[0]<b[0]?-1:1).map(x=>x[1]).join("")}</div>`).join("")
@@ -1614,7 +1614,7 @@ function renderBlock(){
     <div class="field"><label for="blk-f">From time</label><input type="time" id="blk-f" value="${CONFIG.open}"></div><div class="field"><label for="blk-t">To time</label><input type="time" id="blk-t" value="${CONFIG.close}"></div>
     <div class="field full"><label for="blk-r">Reason (only you see this)</label><input id="blk-r" placeholder="Holiday"></div></div>
     <p class="adm-msg" id="blkMsg"></p><div><button type="button" class="btn" id="blkSave">Block this time</button></div></div>
-    <div style="margin-top:24px"><p class="eyebrow" style="margin-bottom:10px">Coming up</p>${list.length?list.map(x=>`<div class="item s-block"><span class="t">${esc(shortDay(x.start.slice(0,10)))}</span><span class="w"><b>${esc(x.start.slice(11))} to ${esc(x.end.slice(0,10)===x.start.slice(0,10)?x.end.slice(11):shortDay(x.end.slice(0,10))+" "+x.end.slice(11))}</b><span>${esc(x.title)}</span></span></div>`).join(""):`<div class="empty-s">Nothing blocked.</div>`}</div>`;
+    <div style="margin-top:24px"><p class="eyebrow" style="margin-bottom:10px">Coming up</p>${list.length?list.map(x=>`<div class="item s-block"><span class="t">${esc(shortDay(x.start.slice(0,10)))}</span><span class="w"><b>${esc(x.start.slice(11))} to ${esc(x.end.slice(0,10)===x.start.slice(0,10)?x.end.slice(11):shortDay(x.end.slice(0,10))+" "+x.end.slice(11))}</b><span>${esc(x.title)}</span></span>${x.id?`<button type="button" class="sbtn" data-unblock="${esc(x.id)}" style="justify-self:end;align-self:center;cursor:pointer">Unblock</button>`:""}</div>`).join(""):`<div class="empty-s">Nothing blocked.</div>`}</div>`;
   $("#blkSave").onclick=async()=>{
     const p={date:$("#blk-d").value,dateTo:$("#blk-d2").value||$("#blk-d").value,from:$("#blk-f").value,to:$("#blk-t").value,title:$("#blk-r").value.trim()};
     if(!p.date){ $("#blkMsg").textContent="Please pick a date."; return; }
@@ -1622,7 +1622,7 @@ function renderBlock(){
     $("#blkSave").disabled=true;
     const r=await admCall("admin_block",p).catch(()=>null);
     $("#blkSave").disabled=false;
-    if(r&&r.ok){ D.blocked=(D.blocked||[]).concat([{title:p.title||"Not available",start:p.date+" "+p.from,end:p.dateTo+" "+p.to}]); renderBlock(); admSay(ADM.demo?"Demo: blocked time added (not saved).":"Time blocked. It’s now unavailable on the website."); busy.push([new Date(p.date+"T"+p.from),new Date(p.dateTo+"T"+p.to)]); }
+    if(r&&r.ok){ D.blocked=(D.blocked||[]).concat([{id:r.id||("demo"+Date.now()),title:p.title||"Not available",start:p.date+" "+p.from,end:p.dateTo+" "+p.to}]); ADM.yearBusy={}; renderBlock(); admSay(ADM.demo?"Demo: blocked time added (not saved).":"Time blocked. It’s now unavailable on the website."); busy.push([new Date(p.date+"T"+p.from),new Date(p.dateTo+"T"+p.to)]); }
     else $("#blkMsg").textContent=(r&&r.message)||"Couldn't save. Please try again.";
   };
 }
@@ -1636,7 +1636,7 @@ function admItemsByDay(){
   const add=(d,x)=>{ (m[d]=m[d]||[]).push(x); };
   D.bookings.forEach(b=>{ if(b.Status!=="Cancelled") add(b.Date,{k:"b",from:b.Start,to:b.End,t:b.Treatment,n:b.Name,ref:b.Ref,st:b.Status}); });
   D.consultations.forEach(c=>{ if(c.Status!=="Cancelled"){ const e=toMin(String(c.Time))+CONFIG.consultMins; add(c.Date,{k:"c",from:c.Time,to:pad(Math.floor(e/60))+":"+pad(e%60),t:"Free "+String(c.Type).toLowerCase(),n:c.Name,ref:c.Ref}); } });
-  (D.blocked||[]).forEach(x=>{ const s=new Date(x.start.replace(" ","T")), e=new Date(x.end.replace(" ","T")); for(const d=new Date(s.getFullYear(),s.getMonth(),s.getDate()); d<e; d.setDate(d.getDate()+1)) add(ymd(d),{k:"x",t:x.title,from:ymd(d)===x.start.slice(0,10)?x.start.slice(11):"00:00",to:ymd(d)===x.end.slice(0,10)?x.end.slice(11):"23:59"}); });
+  (D.blocked||[]).forEach(x=>{ const s=new Date(x.start.replace(" ","T")), e=new Date(x.end.replace(" ","T")); for(const d=new Date(s.getFullYear(),s.getMonth(),s.getDate()); d<e; d.setDate(d.getDate()+1)) add(ymd(d),{k:"x",id:x.id,t:x.title,from:ymd(d)===x.start.slice(0,10)?x.start.slice(11):"00:00",to:ymd(d)===x.end.slice(0,10)?x.end.slice(11):"23:59"}); });
   return m;
 }
 function admYearBusy(y){
@@ -1704,7 +1704,7 @@ function openDay(ds){
   const free=dayFree(ds,items,yb), st=dayStatus(ds,items,yb);
   const label={free:"Free all day",part:"Some times free",full:"Fully booked",blocked:"Blocked",closed:"Closed",past:"Past"}[st];
   const list=items.map(x=>x.k==="x"
-    ?`<div class="item s-block"><span class="t">${esc(x.from)}<small>to ${esc(x.to)}</small></span><span class="w"><b>Blocked</b><span>${esc(x.t)}</span></span></div>`
+    ?`<div class="item s-block"><span class="t">${esc(x.from)}<small>to ${esc(x.to)}</small></span><span class="w"><b>Blocked</b><span>${esc(x.t)}</span></span>${x.id?`<button type="button" class="sbtn" data-unblock="${esc(x.id)}" style="justify-self:end;align-self:center;cursor:pointer">Unblock</button>`:""}</div>`
     :`<button type="button" class="item s-${x.k==="c"?"consult":(ST_CLASS[x.st]||"reserved")}" data-open="${x.k}:${esc(x.ref)}"><span class="t">${esc(x.from)}<small>to ${esc(x.to)}</small></span><span class="w"><b>${esc(x.n)}</b><span>${esc(x.t)}</span></span>${x.k==="b"?`<span class="pill2 s-${ST_CLASS[x.st]||"reserved"}">${esc(x.st==="Reserved, awaiting deposit"?"Awaiting deposit":x.st)}</span>`:""}</button>`).join("");
   openDrawer(`<p class="eyebrow gold">${esc(label)}</p><h2>${esc(prettyDay(ds))}</h2>
     ${free&&st!=="past"?`<div style="display:grid;gap:8px"><p class="eyebrow">Free times</p>${free.length?`<div class="yr-free">${free.map(([a,b])=>`<span>${hm(a)} to ${hm(b)}</span>`).join("")}</div>`:`<p class="note">No free time left this day.</p>`}</div>`:""}
@@ -1792,6 +1792,21 @@ function openAddAppt(pref){
   $("#apSave").onclick=()=>save(false);
 }
 
+/* remove blocked time: tap once, then tap again to confirm */
+document.addEventListener("click",async e=>{
+  const b=e.target.closest("[data-unblock]"); if(!b) return;
+  e.stopPropagation();
+  if(!b.dataset.sure){ b.dataset.sure="1"; b.textContent="Tap again to unblock"; setTimeout(()=>{ if(b.isConnected){ delete b.dataset.sure; b.textContent="Unblock"; } },4000); return; }
+  b.disabled=true; b.textContent="Removing…";
+  const id=b.dataset.unblock;
+  const r=await admCall("admin_unblock",{id}).catch(()=>null);
+  if(r&&r.ok){
+    ADM.data.blocked=(ADM.data.blocked||[]).filter(x=>String(x.id)!==String(id)); ADM.yearBusy={};
+    if(!$("#admDrawer").hidden) closeDrawer();
+    admRender(); loadBusy();
+    admSay(ADM.demo?"Demo: unblocked (not saved).":"Unblocked. That time can be booked again on the website.");
+  } else { b.disabled=false; b.textContent="Unblock"; delete b.dataset.sure; admSay((r&&r.message)||"Couldn't unblock. Please try again.",true); }
+});
 function wireOpen(){ $$("#admPane [data-open]").forEach(el=>el.onclick=()=>{ const [k,id]=el.dataset.open.split(/:(.+)/); if(k==="b") openBooking(id); else if(k==="c") openConsult(id); else openClient(id); }); }
 function openDrawer(html){ $("#admDrawerPane").innerHTML=`<button type="button" class="x" aria-label="Close" id="drClose">×</button>`+html; $("#admDrawer").hidden=false; $("#drClose").onclick=closeDrawer; }
 function closeDrawer(){ $("#admDrawer").hidden=true; }
@@ -1935,7 +1950,7 @@ function demoData(){
       answers:[["Your details and skin goals","About you","Full name","Sample New Client"],["Your details and skin goals","Your skin","What would you like to improve?","Pigmentation, Texture"],["Your details and skin goals","Your skin","How would you describe your skin?","Combination"],
         ["Medical and hormonal history","Health conditions","Skin and infection history","Cold sores / HSV"],["Medical and hormonal history","Health conditions","Are you currently pregnant, breastfeeding or trying to conceive?","No"],
         ["Your skincare and treatment history","Current routine","Are you currently using any of these?","Retinoid / tretinoin, Vitamin C"],["Aftercare, photographs and consent","Client acknowledgement and consent","I consent to the agreed treatment after Nastasija’s review.","Yes"]]}},
-    blocked:[{title:"Training day",start:d(10)+" 10:00",end:d(10)+" 19:00"}],
+    blocked:[{id:"demo-block-1",title:"Training day",start:d(10)+" 10:00",end:d(10)+" 19:00"}],
     bank:CONFIG.bank, sheetUrl:""};
 }
 
