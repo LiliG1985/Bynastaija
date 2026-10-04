@@ -505,10 +505,11 @@ function adminBook_(d) {
   const svc = SERVICES[d.service];
   const tname = svc ? svc.name : clean_(d.customName).slice(0, 120);
   if (!tname) return { ok: false, message: 'Please choose or type the treatment.' };
-  const name = clean_(d.name), email = clean_(d.email), notes = clean_(d.notes);
-  if (!name) return { ok: false, message: 'Please add the client\'s name.' };
+  const email = clean_(d.email), notes = clean_(d.notes);
   const phone = d.phone ? normPhone_(d.phone) : '';
-  if (phone && phone.length < 11) return { ok: false, message: 'Please check the mobile number, or leave it empty.' };
+  if (phone && phone.length < 11) return { ok: false, message: 'Please check the mobile number, for example 050 123 4567.' };
+  const name = clean_(d.name) || (phone ? '+' + phone : '');
+  if (!name) return { ok: false, message: 'Please add the client\'s mobile number.' };
   const status = BOOKING_STATUSES.indexOf(d.status) >= 0 ? d.status : BOOKING_STATUSES[0];
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(d.date)) || !/^\d{2}:\d{2}$/.test(String(d.time))) return { ok: false, message: 'Please add the date and time.' };
   const addons = (d.addons || []).filter(function (k) { return ADDONS[k]; });
@@ -538,7 +539,7 @@ function adminBook_(d) {
   sh.appendRow([ref, new Date(), BOOKING_STATUSES[0], "'" + d.date, "'" + d.time, "'" + fmt_(end, 'HH:mm'), safe_(tname), addonNames, safe_(name),
     phone ? "'+" + phone : '', safe_(email), total, deposit, safe_(notes), 'Added by Nastasija', '', evId]);
   const row = sh.getLastRow();
-  if (phone) upsertClient_(phone, name, email, d.date);
+  if (phone) upsertClient_(phone, clean_(d.name), email, d.date);
   if (status !== BOOKING_STATUSES[0]) { sh.getRange(row, 3).setValue(status); applyStatus_('Bookings', row, status, true); }
   return { ok: true, ref: ref, end: fmt_(end, 'HH:mm'), deposit: deposit };
 }

@@ -1725,9 +1725,9 @@ function openAddAppt(pref){
   openDrawer(`<p class="eyebrow gold">New appointment</p><h2>Add an appointment</h2>
     <p class="note">For clients who message you directly, friends, or appointments booked before the website. It goes straight into your diary and Google Calendar. No message is sent to the client.</p>
     <div class="fields">
-      <div class="field full"><label for="ap-n">Client name</label><input id="ap-n" value="${esc(pref.name||"")}"></div>
-      <div class="field"><label for="ap-p">Mobile (optional)</label><input id="ap-p" type="tel" placeholder="05X XXX XXXX" value="${esc(pref.phone?"0"+String(normPhone(pref.phone)).replace(/^971/,""):"")}"></div>
-      <div class="field"><label for="ap-e">Email (optional)</label><input id="ap-e" type="email" value="${esc(pref.email||"")}"></div>
+      <div class="field"><label for="ap-p">Mobile</label><input id="ap-p" type="tel" placeholder="05X XXX XXXX" value="${esc(pref.phone?"0"+String(normPhone(pref.phone)).replace(/^971/,""):"")}"></div>
+      <div class="field"><label for="ap-n">Name (optional)</label><input id="ap-n" value="${esc(pref.name||"")}"></div>
+      <div class="field full"><label for="ap-e">Email (optional)</label><input id="ap-e" type="email" value="${esc(pref.email||"")}"></div>
       <div class="field full"><label for="ap-s">Treatment</label><select id="ap-s">${groups}<option value="custom">Something else (type it below)</option></select></div>
       <div class="field full" id="ap-cw" hidden><label for="ap-c">Treatment name</label><input id="ap-c" placeholder="e.g. Brow shape and tint"></div>
       <div class="field full"><span class="flabel">Add ons</span><div class="chips2">${Object.entries(ADDONS).map(([k,a])=>`<label class="chip2"><input type="checkbox" name="ap-a" value="${k}"><span>${esc(a.name)}</span></label>`).join("")}</div></div>
@@ -1739,7 +1739,7 @@ function openAddAppt(pref){
         <label class="chip2"><input type="radio" name="ap-st" value="Reserved, awaiting deposit"><span>Not paid yet</span></label>
         <label class="chip2"><input type="radio" name="ap-st" value="Deposit paid"><span>Deposit paid</span></label>
         <label class="chip2"><input type="radio" name="ap-st" value="Completed"><span>Already done (past)</span></label></div></div>
-      <div class="field full"><label for="ap-no">Notes</label><textarea id="ap-no" rows="2"></textarea></div>
+      <div class="field full"><label for="ap-no">Notes (optional)</label><textarea id="ap-no" rows="2"></textarea></div>
     </div>
     <p class="note" id="ap-sum"></p>
     <p class="adm-msg" id="drMsg"></p>
@@ -1763,8 +1763,8 @@ function openAddAppt(pref){
       name:$("#ap-n").value.trim(),phone:pv?normPhone(pv):"",email:$("#ap-e").value.trim(),date:$("#ap-d").value,time:$("#ap-t").value,
       mins:Number($("#ap-m").value),price:Number($("#ap-pr").value),status:st,notes:$("#ap-no").value.trim(),force:!!force};
     let err="";
-    if(!p.name) err="Please add the client’s name.";
-    else if(pv&&!phoneOk(pv)) err="Please check the mobile number, or leave it empty.";
+    if(!pv&&!p.name) err="Please add the client’s mobile number (or a name if you don’t have it).";
+    else if(pv&&!phoneOk(pv)) err="Please check the mobile number, for example 050 123 4567.";
     else if(sid==="custom"&&!p.customName) err="Please type the treatment name.";
     else if(!p.date||!p.time) err="Please add the date and start time.";
     else if(!(p.mins>0)) err="Please add the length in minutes.";
@@ -1782,9 +1782,9 @@ function openAddAppt(pref){
     if(!(r&&r.ok)){ $("#drMsg").textContent=(r&&r.message)||"Couldn't save. Please try again."; return; }
     const sv=SERVICES.find(x=>x.id===sid), addonNames=p.addons.map(k=>ADDONS[k].name).join(", ");
     const b={Ref:r.ref||localRef("BN-"),Created:todayStr(),Status:st,Date:p.date,Start:p.time,End:r.end||hm(e0),Treatment:sv?sv.name:p.customName,"Add ons":addonNames,
-      Name:p.name,Phone:p.phone?"+"+p.phone:"",Email:p.email,"Total (AED)":p.price,"50% deposit (AED)":Math.round(p.price*CONFIG.depositPercent/100),Notes:p.notes,"Client type":"Added by Nastasija"};
+      Name:p.name||(p.phone?"+"+p.phone:""),Phone:p.phone?"+"+p.phone:"",Email:p.email,"Total (AED)":p.price,"50% deposit (AED)":Math.round(p.price*CONFIG.depositPercent/100),Notes:p.notes,"Client type":"Added by Nastasija"};
     ADM.data.bookings.push(b);
-    if(p.phone&&!ADM.data.clients.some(c=>normPhone(c.Phone)===p.phone)) ADM.data.clients.push({Phone:"+"+p.phone,Name:p.name,Email:p.email,"First contact":todayStr(),"Last booking":p.date,"Completed visits":st==="Completed"?1:0,Bookings:1,"Treatment history":"","Private notes":""});
+    if(p.phone&&!ADM.data.clients.some(c=>normPhone(c.Phone)===p.phone)) ADM.data.clients.push({Phone:"+"+p.phone,Name:p.name||"",Email:p.email,"First contact":todayStr(),"Last booking":p.date,"Completed visits":st==="Completed"?1:0,Bookings:1,"Treatment history":"","Private notes":""});
     ADM.yearBusy={}; admRender(); loadBusy();
     openBooking(b.Ref);
     $("#drMsg").textContent=ADM.demo?"Demo: added on this screen only (not saved).":"Added to your diary and Google Calendar.";
@@ -1898,9 +1898,9 @@ function openClient(phone){
   const spent=hist.filter(b=>b.Status==="Completed").reduce((a,b)=>a+Number(b["Total (AED)"]||0),0);
   openDrawer(`<p class="eyebrow gold">${c?"Client profile":"Add a client"}</p><h2>${esc(c?(c.Name||"Client"):"New client")}</h2>
     ${c?`<dl class="kv"><dt>Client since</dt><dd>${esc(String(c["First contact"]).slice(0,10))}</dd><dt>Visits</dt><dd>${Number(c["Completed visits"]||0)} completed · ${Number(c.Bookings||0)} booked</dd><dt>Spent</dt><dd>${fmt(spent)}</dd></dl>`:""}
-    <div class="fields"><div class="field"><label for="cl-n">Name</label><input id="cl-n" value="${esc(c?c.Name:"")}"></div><div class="field"><label for="cl-p">Mobile</label><input id="cl-p" type="tel" value="${esc(c?c.Phone:"")}" ${c?"readonly":""} placeholder="05X XXX XXXX"></div>
-    <div class="field full"><label for="cl-e">Email</label><input id="cl-e" type="email" value="${esc(c?c.Email:"")}"></div>
-    <div class="field full"><label for="cl-no">Private notes (allergies, skin type, colours used…)</label><textarea id="cl-no">${esc(c?c["Private notes"]:"")}</textarea></div></div>
+    <div class="fields"><div class="field"><label for="cl-p">Mobile (needed)</label><input id="cl-p" type="tel" value="${esc(c?c.Phone:"")}" ${c?"readonly":""} placeholder="05X XXX XXXX"></div><div class="field"><label for="cl-n">Name (optional)</label><input id="cl-n" value="${esc(c?c.Name:"")}"></div>
+    <div class="field full"><label for="cl-e">Email (optional)</label><input id="cl-e" type="email" value="${esc(c?c.Email:"")}"></div>
+    <div class="field full"><label for="cl-no">Private notes (optional): allergies, skin type, colours used…</label><textarea id="cl-no">${esc(c?c["Private notes"]:"")}</textarea></div></div>
     <p class="adm-msg" id="drMsg"></p>
     <div class="row-btns"><button type="button" class="sbtn gold" id="clSave">${c?"Save changes":"Add client"}</button>${c?`<button type="button" class="sbtn" id="clAppt">Add appointment</button>`:""}${phone?`<a class="sbtn" target="_blank" rel="noopener" href="${wa(phone)}">WhatsApp</a>`:""}${forms.map((f,i)=>`<button type="button" class="sbtn" data-form="${esc(f.id)}">Consultation form${forms.length>1?" "+esc(String(f.received).slice(0,10)):""}</button>`).join("")}</div>
     ${c?`<div style="display:grid;gap:8px"><p class="eyebrow">Treatment history</p><div class="hist">${hist.length?hist.map(b=>`<div><span>${esc(shortDay(b.Date))}</span><span>${esc(b.Treatment)}</span><span class="pill2 s-${ST_CLASS[b.Status]||"reserved"}">${esc(b.Status==="Reserved, awaiting deposit"?"Awaiting deposit":b.Status)}</span></div>`).join(""):`<div><span></span><span class="note">No treatments booked yet</span><span></span></div>`}
@@ -1909,7 +1909,7 @@ function openClient(phone){
   if($("#clAppt")) $("#clAppt").onclick=()=>openAddAppt({name:c.Name,phone:c.Phone,email:c.Email});
   $("#clSave").onclick=async()=>{
     const pv=$("#cl-p").value;
-    if(!phoneOk(pv)){ $("#drMsg").textContent="Please enter a valid mobile number."; return; }
+    if(!phoneOk(pv)){ $("#drMsg").textContent="Please enter the mobile number, for example 050 123 4567."; return; }
     const payload={phone:normPhone(pv),name:$("#cl-n").value.trim(),email:$("#cl-e").value.trim(),notes:$("#cl-no").value.trim()};
     $("#clSave").disabled=true;
     const r=await admCall("admin_client",payload).catch(()=>null);
@@ -1920,7 +1920,7 @@ function openClient(phone){
       row.Name=payload.name; row.Email=payload.email; row["Private notes"]=payload.notes;
       $("#drMsg").textContent=ADM.demo?"Demo: saved on this screen only.":"Saved.";
       if(ADM.tab==="clients") renderClients(); admRender();
-      if(!c) openClient(payload.phone);
+      if(!c){ openClient(payload.phone); $("#drMsg").textContent=ADM.demo?"Demo: client added on this screen only.":"Client added. They can now book online as a returning client."; }
     } else $("#drMsg").textContent=(r&&r.message)||"Couldn't save. Please try again.";
   };
 }
