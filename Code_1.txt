@@ -41,7 +41,8 @@ const SETTINGS = {
     REMINDER_HOUR: 10                      // reminders for tomorrow's appointments go out at this hour each day
   },                  // optional: CallMeBot key so she also gets a WhatsApp alert for each booking (see guide)
   ADMIN_PASSWORD: '',                      // type her dashboard password here, run setup(), then clear it again
-  SESSION_DAYS: 30,                        // how long she stays logged in on a device
+  SESSION_DAYS: 14,                        // "keep me logged in" on her own phone: this many days
+  SESSION_HOURS: 8,                        // otherwise the login ends after this many hours
   BANK: {                                  // ADD HER BANK DETAILS HERE
     accountName: '',
     bank: '',
@@ -165,7 +166,7 @@ function doPost(e) {
     if (data.action === 'consult') return json_(consult_(data));
     if (data.action === 'contact') return json_(contact_(data));
     if (data.action === 'intake') return json_(intake_(data));
-    if (data.action === 'login') return json_(login_(data.password));
+    if (data.action === 'login') return json_(login_(data.password, data.remember));
     if (String(data.action).indexOf('admin_') === 0) {
       if (!checkSession_(data.token)) return json_({ ok: false, error: 'auth', message: 'Please log in again.' });
       return json_(admin_(data));
@@ -543,10 +544,10 @@ function adminBook_(d) {
 }
 
 /* ===================== studio dashboard (login + data) ===================== */
-function login_(password) {
+function login_(password, remember) {
   const cache = CacheService.getScriptCache();
   const tries = Number(cache.get('login_tries') || 0);
-  if (tries >= 8) return { ok: false, message: 'Too many attempts. Please wait 15 minutes and try again.' };
+  if (tries >= 5) return { ok: false, message: 'Too many attempts. Please wait 15 minutes and try again.' };
   const stored = PropertiesService.getScriptProperties().getProperty('ADMIN_HASH');
   if (!stored) return { ok: false, message: 'No password has been set yet. Run setup() with ADMIN_PASSWORD filled in.' };
   if (!password || hash_(String(password)) !== stored) {
@@ -557,11 +558,12 @@ function login_(password) {
   cache.remove('login_tries');
   const token = Utilities.getUuid() + Utilities.getUuid();
   const props = PropertiesService.getScriptProperties();
-  props.setProperty('sess_' + hash_(token), String(Date.now() + SETTINGS.SESSION_DAYS * 864e5));
+  const ms = remember ? SETTINGS.SESSION_DAYS * 864e5 : SETTINGS.SESSION_HOURS * 36e5;
+  props.setProperty('sess_' + hash_(token), String(Date.now() + ms));
   // tidy expired sessions
   const all = props.getProperties();
   Object.keys(all).forEach(function (k) { if (k.indexOf('sess_') === 0 && Number(all[k]) < Date.now()) props.deleteProperty(k); });
-  return { ok: true, token: token, days: SETTINGS.SESSION_DAYS };
+  return { ok: true, token: token, days: ms / 864e5 };
 }
 function checkSession_(token) {
   if (!token) return false;
@@ -573,6 +575,11 @@ function admin_(d) {
   if (a === 'admin_data') return { ok: true, data: dashboardData_(), bookingStatuses: BOOKING_STATUSES, consultStatuses: CONSULT_STATUSES };
   if (a === 'admin_form') return formById_(d.id);
   if (a === 'admin_book') return adminBook_(d);
+  if (a === 'admin_logout_all') {
+    const props = PropertiesService.getScriptProperties(), all = props.getProperties();
+    Object.keys(all).forEach(function (k) { if (k.indexOf('sess_') === 0) props.deleteProperty(k); });
+    return { ok: true };
+  }
   if (a === 'admin_logout') { PropertiesService.getScriptProperties().deleteProperty('sess_' + hash_(String(d.token))); return { ok: true }; }
   if (a === 'admin_status') {
     const name = d.kind === 'consult' ? 'Consultations' : 'Bookings';
