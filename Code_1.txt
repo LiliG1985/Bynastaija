@@ -612,6 +612,13 @@ function admin_(d) {
     ev.setColor(CalendarApp.EventColor.GRAY);
     return { ok: true, id: ev.getId() };
   }
+  if (a === 'admin_unblock') {
+    const ev = d.id ? cal_().getEventById(String(d.id)) : null;
+    if (!ev) return { ok: false, message: 'That blocked time was not found. It may already be removed.' };
+    if (!/^BLOCKED/.test(ev.getTitle())) return { ok: false, message: 'Only blocked time can be removed here.' };
+    ev.deleteEvent();
+    return { ok: true };
+  }
   return { ok: false, message: 'Unknown action' };
 }
 function findRowByRef_(name, ref) {
@@ -630,7 +637,7 @@ function dashboardData_() {
   };
   const blocked = cal_().getEvents(new Date(Date.now() - 864e5), new Date(Date.now() + 120 * 864e5))
     .filter(function (ev) { return /^BLOCKED/.test(ev.getTitle()); })
-    .map(function (ev) { return { title: ev.getTitle().replace(/^BLOCKED · /, ''), start: fmt_(ev.getStartTime(), 'yyyy-MM-dd HH:mm'), end: fmt_(ev.getEndTime(), 'yyyy-MM-dd HH:mm') }; });
+    .map(function (ev) { return { id: ev.getId(), title: ev.getTitle().replace(/^BLOCKED · /, ''), start: fmt_(ev.getStartTime(), 'yyyy-MM-dd HH:mm'), end: fmt_(ev.getEndTime(), 'yyyy-MM-dd HH:mm') }; });
   const forms = read('Consultation forms').map(function (f) { return { id: f['Form id'], received: f.Received, ref: f['Consult ref'], name: f.Name, phone: f.Phone, attention: f['Needs attention'] }; });
   return { bookings: read('Bookings'), consultations: read('Consultations'), clients: read('Clients'), messages: read('Messages'), forms: forms, blocked: blocked,
            bank: SETTINGS.BANK, sheetUrl: book.getUrl() };
