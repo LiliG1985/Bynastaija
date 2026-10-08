@@ -23,12 +23,13 @@ const SETTINGS = {
   OPEN: '10:00',
   CLOSE: '19:00',
   OPEN_DAYS: [1, 2, 3, 4, 5, 6],          // 0 = Sunday ... 6 = Saturday
-  LUNCH: ['13:00', '14:00'],
+  LUNCH: null,                             // no lunch break (to add one back: ['13:00', '14:00'])
   BUFFER_MIN: 10,                          // gap between clients
   CONSULT_MIN: 20,
+  BOOK_DAYS_AHEAD: 60,                     // clients can book up to this many days ahead (the website shows the same)
   DEPOSIT_PERCENT: 50,
   HOLD_HOURS: 24,
-  WHATSAPP_ALERT_KEY: '',
+  WHATSAPP_ALERT_KEY: '',                  // CallMeBot key: paste it here, run setup() once, then you can leave it or clear it
   /* Automatic WhatsApp messages to clients (WhatsApp Business Platform). Leave TOKEN empty to keep one tap sending.
      Meta Cloud API:  URL 'https://graph.facebook.com/v21.0/<PHONE_NUMBER_ID>/messages', HEADER 'Authorization', TOKEN 'Bearer <token>'
      360dialog:       URL 'https://waba-v2.360dialog.io/messages', HEADER 'D360-API-KEY', TOKEN '<api key>' */
@@ -40,9 +41,13 @@ const SETTINGS = {
     TEMPLATES: { deposit: 'deposit_request', consult: 'consultation_booked', confirmed: 'booking_confirmed', reminder: 'appointment_reminder' },
     REMINDER_HOUR: 10                      // reminders for tomorrow's appointments go out at this hour each day
   },                  // optional: CallMeBot key so she also gets a WhatsApp alert for each booking (see guide)
+  CLIENT_PASSWORD: '',                     // the one password all clients use to open the website: type it, run setup(), then clear it
+  CLIENT_LOGIN_DAYS: 30,                   // clients stay logged in on their phone this long
   ADMIN_PASSWORD: '',                      // type her dashboard password here, run setup(), then clear it again
-  SESSION_DAYS: 30,                        // how long she stays logged in on a device
-  BANK: {                                  // ADD HER BANK DETAILS HERE
+  SESSION_DAYS: 14,                        // "keep me logged in" on her own phone: this many days
+  SESSION_HOURS: 8,                        // otherwise the login ends after this many hours
+  BANK_IN_CLIENT_EMAIL: false,             // false = bank details only go in the WhatsApp message Nastasija sends herself
+  BANK: {                                  // type her bank details here, run setup() once (they are then kept safely even if you clear them)
     accountName: '',
     bank: '',
     iban: '',
@@ -58,6 +63,8 @@ const SERVICES = {
   'oxygen':        { name: 'Cocoa+ Oxygen Facial', mins: 90, price: 650 },
   'biorepeel':     { name: 'BioRePeel', mins: 90, price: 650 },
   'nuqy':          { name: 'MEOKDA Sponge Peel', mins: 90, price: 700 },
+  'glow-go':       { name: 'Glow & Go Facial', mins: 60, price: 500 },
+  'signature':     { name: 'Nastasija Signature Edit', mins: 90, price: 700 },
   'mn-hyla':       { name: 'Dermapen 4 with Hyla Active', mins: 90, price: 850 },
   'mn-salmon':     { name: 'Dermapen 4 with Salmon & Peptides Skin Booster', mins: 90, price: 900 },
   'mn-exo':        { name: 'Dermapen 4 with Pure Exosomes', mins: 90, price: 1000 },
@@ -80,15 +87,17 @@ const CONSULT_STATUSES = ['Reserved', 'Confirmed', 'Done', 'Cancelled'];
 
 const HEAD = {
   Bookings: ['Ref', 'Created', 'Status', 'Date', 'Start', 'End', 'Treatment', 'Add ons', 'Name', 'Phone', 'Email',
-             'Total (AED)', '50% deposit (AED)', 'Notes', 'Client type', 'Send deposit message', 'Calendar event id'],
+             'Total (AED)', '50% deposit (AED)', 'Notes', 'Client type', 'Send deposit message', 'Calendar event id', 'Treatment notes'],
   Consultations: ['Ref', 'Created', 'Status', 'Date', 'Time', 'Type', 'Name', 'Phone', 'Email', 'Interested in',
-                  'Concerns', 'WhatsApp client', 'Calendar event id', 'Form'],
+                  'Concerns', 'WhatsApp client', 'Calendar event id', 'Form', 'Treatment notes'],
   Clients: ['Phone', 'Name', 'Email', 'First contact', 'Last booking', 'Completed visits', 'Bookings', 'Treatment history', 'Private notes'],
   Messages: ['Received', 'Name', 'Phone', 'Email', 'Subject', 'Message'],
+  'Client logins': ['Time', 'Mobile'],
   'Consultation forms': ['Form id', 'Received', 'Consult ref', 'Name', 'Phone', 'Email', 'Needs attention', 'Answers', 'Signature']
 };
 /* finds a tab, creating it with its headings if it isn't there yet (so new tabs appear without running setup again) */
 function sheet_(name) {
+  if (SHEET_CACHE[name]) return SHEET_CACHE[name];
   const book = ss_();
   let sh = book.getSheetByName(name);
   if (!sh) {
@@ -97,6 +106,7 @@ function sheet_(name) {
   } else if (sh.getLastColumn() < HEAD[name].length) {
     sh.getRange(1, 1, 1, HEAD[name].length).setValues([HEAD[name]]).setFontWeight('bold').setBackground('#EFE6DD');
   }
+  SHEET_CACHE[name] = sh;
   return sh;
 }
 function formLink_() { return SETTINGS.SITE_URL.replace(/\/$/, '') + '/#form'; }
@@ -112,6 +122,20 @@ function setup() {
     props.setProperty('SHEET_ID', ss.getId());
   }
   ss.setSpreadsheetTimeZone(SETTINGS.TIMEZONE);
+  const B = SETTINGS.BANK;
+  if (B.accountName || B.bank || B.iban || B.accountNumber) {
+    props.setProperty('BANK', JSON.stringify(B));
+    Logger.log('Bank details saved. They will be typed into the deposit WhatsApp messages for you.');
+  }
+  if (SETTINGS.WHATSAPP_ALERT_KEY) {
+    props.setProperty('WA_ALERT_KEY', String(SETTINGS.WHATSAPP_ALERT_KEY).trim());
+    Logger.log('WhatsApp alert key saved. Booking alerts will now come to WhatsApp, even if you clear the key in SETTINGS later.');
+  }
+  if (SETTINGS.CLIENT_PASSWORD) {
+    props.setProperty('CLIENT_HASH', hash_('client:' + SETTINGS.CLIENT_PASSWORD));
+    props.setProperty('CLIENT_SECRET', Utilities.getUuid() + Utilities.getUuid());   // a new password logs every client out
+    Logger.log('Client password saved. Clear CLIENT_PASSWORD in SETTINGS and save. Clients now need this password to open the website.');
+  }
   if (SETTINGS.ADMIN_PASSWORD) {
     props.setProperty('ADMIN_HASH', hash_(SETTINGS.ADMIN_PASSWORD));
     Logger.log('Dashboard password saved. You can now clear ADMIN_PASSWORD in SETTINGS and save.');
@@ -139,13 +163,17 @@ function setStatusRule_(sh, list) {
   const rule = SpreadsheetApp.newDataValidation().requireValueInList(list, true).setAllowInvalid(false).build();
   sh.getRange(2, 3, 1000, 1).setDataValidation(rule);
 }
-function ss_() { return SpreadsheetApp.openById(PropertiesService.getScriptProperties().getProperty('SHEET_ID')); }
-function cal_() { return CalendarApp.getDefaultCalendar(); }
+// opened once per request and reused (opening the sheet is the slowest step)
+let SS_CACHE = null, CAL_CACHE = null, SHEET_CACHE = {};
+function ss_() { return SS_CACHE || (SS_CACHE = SpreadsheetApp.openById(PropertiesService.getScriptProperties().getProperty('SHEET_ID'))); }
+function cal_() { return CAL_CACHE || (CAL_CACHE = CalendarApp.getDefaultCalendar()); }
 
 /* ===================== web endpoints ===================== */
 function doGet(e) {
   const p = (e && e.parameter) || {};
   try {
+    if ((p.action === 'busy' || p.action === 'lookup') && !checkClient_(p.ct) && !checkSession_(p.at))
+      return json_({ ok: false, error: 'client_auth', message: 'Please log in again.' });
     if (p.action === 'busy') return json_({ busy: busy_(p.from, p.to) });
     if (p.action === 'lookup') return json_(lookup_(p.phone));
     return json_({ ok: true, service: SETTINGS.BUSINESS });
@@ -156,14 +184,19 @@ function doPost(e) {
   let data;
   try { data = JSON.parse(e.postData.contents); } catch (err) { return json_({ ok: false, message: 'Bad request' }); }
   if (data.website) return json_({ ok: true, ref: 'OK' });       // spam bot filled the hidden field
+  // reading (logging in, opening the dashboard, viewing a form) doesn't need to wait in line; saving does
+  const readOnly = ['login', 'client_login', 'admin_data', 'admin_form'].indexOf(data.action) >= 0;
   const lock = LockService.getScriptLock();
   try {
-    lock.waitLock(20000);
+    if (!readOnly) lock.waitLock(20000);
+    if (data.action === 'client_login') return json_(clientLogin_(data.phone, data.password));
+    if (['book', 'consult', 'contact', 'intake'].indexOf(data.action) >= 0 && !checkClient_(data.ct))
+      return json_({ ok: false, error: 'client_auth', message: 'Please log in again.' });
     if (data.action === 'book') return json_(book_(data));
     if (data.action === 'consult') return json_(consult_(data));
     if (data.action === 'contact') return json_(contact_(data));
     if (data.action === 'intake') return json_(intake_(data));
-    if (data.action === 'login') return json_(login_(data.password));
+    if (data.action === 'login') return json_(login_(data.password, data.remember));
     if (String(data.action).indexOf('admin_') === 0) {
       if (!checkSession_(data.token)) return json_({ ok: false, error: 'auth', message: 'Please log in again.' });
       return json_(admin_(data));
@@ -172,7 +205,7 @@ function doPost(e) {
   } catch (err) {
     console.error(err);
     return json_({ ok: false, message: 'Something went wrong. Please message Nastasija on WhatsApp.' });
-  } finally { try { lock.releaseLock(); } catch (x) {} }
+  } finally { if (!readOnly) { try { lock.releaseLock(); } catch (x) {} } }
 }
 
 /* ===================== availability ===================== */
@@ -191,9 +224,10 @@ function slotProblem_(start, end) {
   const day = fmt_(start, 'yyyy-MM-dd');
   const at = function (t) { return Utilities.parseDate(day + ' ' + t, tz, 'yyyy-MM-dd HH:mm'); };
   const dow = Number(fmt_(start, 'u')) % 7;                       // u: 1 = Monday ... 7 = Sunday
+  if (start.getTime() > Date.now() + (SETTINGS.BOOK_DAYS_AHEAD + 1) * 864e5) return 'closed';
   if (SETTINGS.OPEN_DAYS.indexOf(dow) < 0) return 'closed';
   if (start < at(SETTINGS.OPEN) || end > at(SETTINGS.CLOSE)) return 'closed';
-  if (start < at(SETTINGS.LUNCH[1]) && end > at(SETTINGS.LUNCH[0])) return 'lunch';
+  if (SETTINGS.LUNCH && start < at(SETTINGS.LUNCH[1]) && end > at(SETTINGS.LUNCH[0])) return 'lunch';
   if (start < new Date()) return 'past';
   const buf = SETTINGS.BUFFER_MIN * 60000;
   const clash = cal_().getEvents(new Date(start.getTime() - buf), new Date(end.getTime() + buf));
@@ -249,7 +283,7 @@ function book_(d) {
     ['When', pretty_(start) + ' to ' + fmt_(end, 'HH:mm')], ['Client', name], ['Phone', '+' + phone], ['Email', email || 'none'],
     ['Total', total + ' AED'], ['50% deposit', deposit + ' AED'], ['Notes', notes || 'none'],
     ['Client type', d.returning ? 'Returning' : 'New'], ['History', (history.html || 'No previous bookings')]
-  ], [{ label: waSent ? 'Message client on WhatsApp' : 'Send deposit message on WhatsApp', url: waSent ? 'https://wa.me/' + phone : waLink }]);
+  ], waSent ? [{ label: 'WhatsApp client', url: 'https://wa.me/' + phone }] : [{ label: 'Send deposit message on WhatsApp', url: waLink }, { label: 'WhatsApp client', url: 'https://wa.me/' + phone }]);
 
   alertWhatsApp_((waSent ? 'Deposit message sent automatically.\n' : '') + 'New booking ' + ref + '\n' + svc.name + (addonNames ? ' + ' + addonNames : '') + '\n' + pretty_(start) +
     '\n' + name + ' +' + phone + '\nDeposit due: ' + deposit + ' AED\n\nSend deposit message: ' + waLink);
@@ -258,23 +292,28 @@ function book_(d) {
     MailApp.sendEmail({
       to: email, name: SETTINGS.BUSINESS, replyTo: SETTINGS.OWNER_EMAIL,
       subject: 'Your treatment is reserved · please pay your 50% deposit',
-      htmlBody: wrap_('<p>' + escape_(depositMsg).replace(/\n/g, '<br>') + '</p>' +
+      htmlBody: wrap_('<p>' + escape_(SETTINGS.BANK_IN_CLIENT_EMAIL ? depositMsg : depositMessage_(name, svc.name, start, deposit, ref, '', false)).replace(/\n/g, '<br>') + '</p>' +
         '<p>Once paid, please send your receipt to Nastasija on WhatsApp: <a href="https://wa.me/' + SETTINGS.OWNER_WHATSAPP + '">+' + SETTINGS.OWNER_WHATSAPP + '</a></p>')
     });
   }
   return { ok: true, ref: ref, deposit: deposit };
 }
 
-function depositMessage_(name, treatment, start, deposit, ref, email) {
-  const b = SETTINGS.BANK;
+function bank_() {
+  const B = SETTINGS.BANK;
+  if (B.accountName || B.bank || B.iban || B.accountNumber) return B;
+  try { return JSON.parse(PropertiesService.getScriptProperties().getProperty('BANK') || '{}'); } catch (e) { return {}; }
+}
+function depositMessage_(name, treatment, start, deposit, ref, email, withBank) {
+  const b = withBank === false ? {} : bank_();
   const lines = [['Account name', b.accountName], ['Bank', b.bank], ['IBAN', b.iban], ['Account no.', b.accountNumber]]
     .filter(function (r) { return r[1]; }).map(function (r) { return r[0] + ': ' + r[1]; }).join('\n');
   return 'Hi ' + name.split(' ')[0] + ', thank you for temporarily reserving your treatment slot with ' + SETTINGS.BUSINESS + '.\n\n' +
     treatment + '\n' + pretty_(start) + '\n\n' +
     (lines ? 'Please pay a 50% deposit of ' + deposit + ' AED to:\n' + lines + '\nReference: ' + ref + '\n\n'
-           : 'To confirm, a 50% deposit of ' + deposit + ' AED is needed. Nastasija will send you the bank details here on WhatsApp.\nReference: ' + ref + '\n\n') +
+           : 'To confirm, a 50% deposit of ' + deposit + ' AED is needed. Nastasija will send you the bank details on WhatsApp.\nReference: ' + ref + '\n\n') +
     'Your slot is held for ' + SETTINGS.HOLD_HOURS + ' hours until the deposit is received. Please send your receipt here once paid.' +
-    (email ? '\n\nWe have also emailed you these details. If you can\'t see the email, please check your spam or junk folder.' : '');
+    (email ? '\n\nWe have also emailed you a confirmation. If you can\'t see the email, please check your spam or junk folder.' : '');
 }
 
 /* ===================== consultations ===================== */
@@ -284,6 +323,7 @@ function consult_(d) {
   const start = Utilities.parseDate(d.date + ' ' + d.time, SETTINGS.TIMEZONE, 'yyyy-MM-dd HH:mm');
   const end = new Date(start.getTime() + SETTINGS.CONSULT_MIN * 60000);
   if (start < new Date()) return { ok: false, error: 'invalid', message: 'Please pick a future time.' };
+  if (start.getTime() > Date.now() + (SETTINGS.BOOK_DAYS_AHEAD + 1) * 864e5) return { ok: false, error: 'invalid', message: 'Bookings open up to 2 months ahead. Please pick an earlier date.' };
   if (cal_().getEvents(start, end).length) return { ok: false, error: 'taken' };
 
   const ref = 'BC-' + Utilities.getUuid().slice(0, 6).toUpperCase();
@@ -311,7 +351,7 @@ function consult_(d) {
   notifyOwner_('New free consultation: ' + name + ' · ' + pretty_(start), [
     ['WhatsApp', waSent ? 'Confirmation sent to the client automatically' : 'Not sent yet: tap the button below'], ['Reference', ref], ['Type', type], ['When', pretty_(start)], ['Client', name], ['Phone', '+' + phone],
     ['Email', email || 'none'], ['Interested in', clean_(d.topic)], ['Concerns', clean_(d.message) || 'none']
-  ], [{ label: 'Confirm on WhatsApp', url: waLink }]);
+  ], [{ label: 'Confirm on WhatsApp', url: waLink }, { label: 'WhatsApp client', url: 'https://wa.me/' + phone }]);
   alertWhatsApp_('New free consultation ' + ref + '\n' + type + ' · ' + pretty_(start) + '\n' + name + ' +' + phone +
     '\nInterested in: ' + clean_(d.topic) + '\n\nConfirm with client: ' + waLink);
   if (email) {
@@ -372,7 +412,8 @@ function intake_(d) {
   upsertClient_(phone, name, email, null);
 
   // email Nastasija the full form
-  let html = '<p style="font-size:15px"><b>' + escape_(name) + '</b> has completed the consultation form' +
+  let html = '<p style="margin:0 0 16px"><a href="https://wa.me/' + phone + '" style="display:inline-block;background:#C6A47B;color:#171615;text-decoration:none;padding:12px 18px;font-size:13px;letter-spacing:1px">WhatsApp client</a></p>' +
+    '<p style="font-size:15px"><b>' + escape_(name) + '</b> has completed the consultation form' +
     (when ? ' for the call on <b>' + escape_(when) + '</b>' : '') + '.</p>' +
     '<p style="font-size:14px">Phone: +' + phone + (email ? ' · ' + escape_(email) : '') + (consultRef ? ' · Consultation ' + consultRef : '') + '</p>';
   html += attention.length
@@ -502,10 +543,11 @@ function adminBook_(d) {
   const svc = SERVICES[d.service];
   const tname = svc ? svc.name : clean_(d.customName).slice(0, 120);
   if (!tname) return { ok: false, message: 'Please choose or type the treatment.' };
-  const name = clean_(d.name), email = clean_(d.email), notes = clean_(d.notes);
-  if (!name) return { ok: false, message: 'Please add the client\'s name.' };
+  const email = clean_(d.email), notes = clean_(d.notes);
   const phone = d.phone ? normPhone_(d.phone) : '';
-  if (phone && phone.length < 11) return { ok: false, message: 'Please check the mobile number, or leave it empty.' };
+  if (phone && phone.length < 11) return { ok: false, message: 'Please check the mobile number, for example 050 123 4567.' };
+  const name = clean_(d.name) || (phone ? '+' + phone : '');
+  if (!name) return { ok: false, message: 'Please add the client\'s mobile number.' };
   const status = BOOKING_STATUSES.indexOf(d.status) >= 0 ? d.status : BOOKING_STATUSES[0];
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(d.date)) || !/^\d{2}:\d{2}$/.test(String(d.time))) return { ok: false, message: 'Please add the date and time.' };
   const addons = (d.addons || []).filter(function (k) { return ADDONS[k]; });
@@ -535,16 +577,88 @@ function adminBook_(d) {
   sh.appendRow([ref, new Date(), BOOKING_STATUSES[0], "'" + d.date, "'" + d.time, "'" + fmt_(end, 'HH:mm'), safe_(tname), addonNames, safe_(name),
     phone ? "'+" + phone : '', safe_(email), total, deposit, safe_(notes), 'Added by Nastasija', '', evId]);
   const row = sh.getLastRow();
-  if (phone) upsertClient_(phone, name, email, d.date);
+  if (phone) upsertClient_(phone, clean_(d.name), email, d.date);
   if (status !== BOOKING_STATUSES[0]) { sh.getRange(row, 3).setValue(status); applyStatus_('Bookings', row, status, true); }
   return { ok: true, ref: ref, end: fmt_(end, 'HH:mm'), deposit: deposit };
 }
 
+/* ===================== amend (move or change) an appointment ===================== */
+function titleFor_(status, tname, name) {
+  const pre = { 'Deposit paid': 'DEPOSIT PAID ✓', 'Completed': 'DONE ✓', 'No show': 'NO SHOW' }[status] || 'AWAITING DEPOSIT';
+  return pre + ' · ' + tname + ' · ' + name;
+}
+function clashes_(start, end, ownId) {
+  const buf = SETTINGS.BUFFER_MIN * 60000;
+  return cal_().getEvents(new Date(start.getTime() - buf), new Date(end.getTime() + buf))
+    .filter(function (ev) { return !ev.isAllDayEvent() && ev.getId() !== ownId; });
+}
+function amendBooking_(d) {
+  const sh = sheet_('Bookings'), row = findRowByRef_('Bookings', d.ref);
+  if (row < 0) return { ok: false, message: 'Booking not found' };
+  const r = sh.getRange(row, 1, 1, HEAD.Bookings.length).getValues()[0];
+  const svc = SERVICES[d.service];
+  const tname = svc ? svc.name : (clean_(d.customName) || String(r[6])).slice(0, 120);
+  const addons = (d.addons || []).filter(function (k) { return ADDONS[k]; });
+  const addonNames = addons.map(function (k) { return ADDONS[k].name; }).join(', ');
+  const phone = d.phone ? normPhone_(d.phone) : '';
+  if (phone && phone.length < 11) return { ok: false, message: 'Please check the mobile number, for example 050 123 4567.' };
+  const name = clean_(d.name) || (phone ? '+' + phone : String(r[8]));
+  const email = clean_(d.email);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(d.date)) || !/^\d{2}:\d{2}$/.test(String(d.time))) return { ok: false, message: 'Please add the date and time.' };
+  const mins = Math.max(5, Math.min(720, Number(d.mins) || 60));
+  const total = Math.max(0, Number(d.price) || 0), deposit = Math.round(total * SETTINGS.DEPOSIT_PERCENT / 100);
+  const start = Utilities.parseDate(d.date + ' ' + d.time, SETTINGS.TIMEZONE, 'yyyy-MM-dd HH:mm');
+  const end = new Date(start.getTime() + mins * 60000);
+  const status = String(r[2]);
+  const evId = String(r[16] || '');
+  if (!d.force && status !== 'Cancelled') {
+    const c = clashes_(start, end, evId);
+    if (c.length) return { ok: false, error: 'clash', message: 'This overlaps with ' + c.map(function (ev) { return ev.getTitle() + ' (' + fmt_(ev.getStartTime(), 'HH:mm') + ' to ' + fmt_(ev.getEndTime(), 'HH:mm') + ')'; }).join(', ') + '.' };
+  }
+  const oldPhone = normPhone_(r[9]);
+  sh.getRange(row, 4, 1, 10).setValues([["'" + d.date, "'" + d.time, "'" + fmt_(end, 'HH:mm'), safe_(tname), addonNames, safe_(name),
+    phone ? "'+" + phone : '', safe_(email), total, deposit]]);
+  const desc = ['Status: ' + status, 'Ref: ' + d.ref, 'Client: ' + name, 'Phone: ' + (phone ? '+' + phone : 'none'), 'Email: ' + (email || 'none'),
+    'Treatment: ' + tname + (addonNames ? ' + ' + addonNames : ''), 'Total: ' + total + ' AED · 50% deposit: ' + deposit + ' AED',
+    'Notes: ' + (clean_(r[13]) || 'none'), 'Amended ' + fmt_(new Date(), 'd MMM yyyy HH:mm')].join('\n') +
+    (r[17] ? '\n\nTreatment notes:\n' + r[17] : '');
+  if (status !== 'Cancelled') {
+    let ev = evId ? cal_().getEventById(evId) : null;
+    if (ev) { ev.setTime(start, end); ev.setTitle(titleFor_(status, tname, name)); ev.setDescription(desc); ev.setLocation(phone ? '+' + phone + (email ? ' · ' + email : '') : (email || '')); }
+    else {
+      ev = cal_().createEvent(titleFor_(status, tname, name), start, end, { description: desc });
+      sh.getRange(row, 17).setValue(ev.getId());
+    }
+    ev.setColor({ 'Deposit paid': CalendarApp.EventColor.GREEN, 'Completed': CalendarApp.EventColor.GRAY, 'No show': CalendarApp.EventColor.RED }[status] || CalendarApp.EventColor.YELLOW);
+  }
+  if (phone) upsertClient_(phone, clean_(d.name), email, d.date);
+  if (oldPhone && oldPhone !== phone) refreshClient_(oldPhone);
+  return { ok: true, end: fmt_(end, 'HH:mm'), deposit: deposit };
+}
+function amendConsult_(d) {
+  const sh = sheet_('Consultations'), row = findRowByRef_('Consultations', d.ref);
+  if (row < 0) return { ok: false, message: 'Consultation not found' };
+  const r = sh.getRange(row, 1, 1, HEAD.Consultations.length).getValues()[0];
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(d.date)) || !/^\d{2}:\d{2}$/.test(String(d.time))) return { ok: false, message: 'Please add the date and time.' };
+  const type = d.type === 'Phone call' ? 'Phone call' : 'Video call';
+  const start = Utilities.parseDate(d.date + ' ' + d.time, SETTINGS.TIMEZONE, 'yyyy-MM-dd HH:mm');
+  const end = new Date(start.getTime() + SETTINGS.CONSULT_MIN * 60000);
+  const evId = String(r[12] || '');
+  if (!d.force && r[2] !== 'Cancelled') {
+    const c = clashes_(start, end, evId);
+    if (c.length) return { ok: false, error: 'clash', message: 'This overlaps with ' + c.map(function (ev) { return ev.getTitle() + ' (' + fmt_(ev.getStartTime(), 'HH:mm') + ')'; }).join(', ') + '.' };
+  }
+  sh.getRange(row, 4, 1, 3).setValues([["'" + d.date, "'" + d.time, type]]);
+  const ev = evId ? cal_().getEventById(evId) : null;
+  if (ev) { ev.setTime(start, end); ev.setTitle('CONSULT ' + type.toUpperCase() + ' · ' + r[6]); }
+  return { ok: true };
+}
+
 /* ===================== studio dashboard (login + data) ===================== */
-function login_(password) {
+function login_(password, remember) {
   const cache = CacheService.getScriptCache();
   const tries = Number(cache.get('login_tries') || 0);
-  if (tries >= 8) return { ok: false, message: 'Too many attempts. Please wait 15 minutes and try again.' };
+  if (tries >= 5) return { ok: false, message: 'Too many attempts. Please wait 15 minutes and try again.' };
   const stored = PropertiesService.getScriptProperties().getProperty('ADMIN_HASH');
   if (!stored) return { ok: false, message: 'No password has been set yet. Run setup() with ADMIN_PASSWORD filled in.' };
   if (!password || hash_(String(password)) !== stored) {
@@ -555,11 +669,41 @@ function login_(password) {
   cache.remove('login_tries');
   const token = Utilities.getUuid() + Utilities.getUuid();
   const props = PropertiesService.getScriptProperties();
-  props.setProperty('sess_' + hash_(token), String(Date.now() + SETTINGS.SESSION_DAYS * 864e5));
+  const ms = remember ? SETTINGS.SESSION_DAYS * 864e5 : SETTINGS.SESSION_HOURS * 36e5;
+  props.setProperty('sess_' + hash_(token), String(Date.now() + ms));
   // tidy expired sessions
   const all = props.getProperties();
   Object.keys(all).forEach(function (k) { if (k.indexOf('sess_') === 0 && Number(all[k]) < Date.now()) props.deleteProperty(k); });
-  return { ok: true, token: token, days: SETTINGS.SESSION_DAYS };
+  return { ok: true, token: token, days: ms / 864e5 };
+}
+/* ===================== client login (one shared password) ===================== */
+function clientGateOn_() { return !!PropertiesService.getScriptProperties().getProperty('CLIENT_HASH'); }
+function clientSig_(phone, exp) { return hash_((PropertiesService.getScriptProperties().getProperty('CLIENT_SECRET') || '') + '|' + phone + '|' + exp).slice(0, 40); }
+function clientLogin_(phone, password) {
+  const props = PropertiesService.getScriptProperties();
+  const stored = props.getProperty('CLIENT_HASH');
+  if (!stored) return { ok: false, message: 'Client login is not set up yet. Please message Nastasija on WhatsApp.' };
+  const p = normPhone_(phone);
+  if (p.length < 11) return { ok: false, message: 'Please enter your mobile number.' };
+  const cache = CacheService.getScriptCache(), key = 'ctries_' + p;
+  const tries = Number(cache.get(key) || 0), all = Number(cache.get('ctries_all') || 0);
+  if (tries >= 6 || all >= 120) return { ok: false, message: 'Too many attempts. Please wait 15 minutes and try again.' };
+  if (!password || hash_('client:' + String(password)) !== stored) {
+    cache.put(key, String(tries + 1), 900); cache.put('ctries_all', String(all + 1), 900);
+    Utilities.sleep(600);
+    return { ok: false, message: 'That password is not right.' };
+  }
+  cache.remove(key);
+  const exp = Date.now() + SETTINGS.CLIENT_LOGIN_DAYS * 864e5;
+  try { sheet_('Client logins').appendRow([new Date(), "'+" + p]); } catch (e) {}
+  return { ok: true, token: p + '.' + exp + '.' + clientSig_(p, exp), days: SETTINGS.CLIENT_LOGIN_DAYS };
+}
+function checkClient_(token) {
+  if (!clientGateOn_()) return true;                 // no client password set: the website stays open
+  const parts = String(token || '').split('.');
+  if (parts.length !== 3) return false;
+  if (!(Number(parts[1]) > Date.now())) return false;
+  return parts[2] === clientSig_(parts[0], parts[1]);
 }
 function checkSession_(token) {
   if (!token) return false;
@@ -571,7 +715,29 @@ function admin_(d) {
   if (a === 'admin_data') return { ok: true, data: dashboardData_(), bookingStatuses: BOOKING_STATUSES, consultStatuses: CONSULT_STATUSES };
   if (a === 'admin_form') return formById_(d.id);
   if (a === 'admin_book') return adminBook_(d);
+  if (a === 'admin_amend') return d.kind === 'consult' ? amendConsult_(d) : amendBooking_(d);
+  if (a === 'admin_logout_all') {
+    const props = PropertiesService.getScriptProperties(), all = props.getProperties();
+    Object.keys(all).forEach(function (k) { if (k.indexOf('sess_') === 0) props.deleteProperty(k); });
+    return { ok: true };
+  }
   if (a === 'admin_logout') { PropertiesService.getScriptProperties().deleteProperty('sess_' + hash_(String(d.token))); return { ok: true }; }
+  if (a === 'admin_note') {
+    const name = d.kind === 'consult' ? 'Consultations' : 'Bookings';
+    const sh = sheet_(name);
+    const row = findRowByRef_(name, d.ref); if (row < 0) return { ok: false, message: 'Appointment not found' };
+    const col = HEAD[name].indexOf('Treatment notes') + 1;
+    const note = String(d.note == null ? '' : d.note).trim().slice(0, 5000);
+    sh.getRange(row, col).setValue(/^[=+\-@]/.test(note) ? "'" + note : note);
+    // keep a copy on the calendar event too
+    const evId = sh.getRange(row, HEAD[name].indexOf('Calendar event id') + 1).getValue();
+    const ev = evId ? cal_().getEventById(String(evId)) : null;
+    if (ev) {
+      const desc = String(ev.getDescription() || '').replace(/\n*Treatment notes:[\s\S]*$/, '');
+      ev.setDescription(desc + (note ? '\n\nTreatment notes:\n' + note : ''));
+    }
+    return { ok: true };
+  }
   if (a === 'admin_status') {
     const name = d.kind === 'consult' ? 'Consultations' : 'Bookings';
     const list = name === 'Bookings' ? BOOKING_STATUSES : CONSULT_STATUSES;
@@ -603,6 +769,13 @@ function admin_(d) {
     ev.setColor(CalendarApp.EventColor.GRAY);
     return { ok: true, id: ev.getId() };
   }
+  if (a === 'admin_unblock') {
+    const ev = d.id ? cal_().getEventById(String(d.id)) : null;
+    if (!ev) return { ok: false, message: 'That blocked time was not found. It may already be removed.' };
+    if (!/^BLOCKED/.test(ev.getTitle())) return { ok: false, message: 'Only blocked time can be removed here.' };
+    ev.deleteEvent();
+    return { ok: true };
+  }
   return { ok: false, message: 'Unknown action' };
 }
 function findRowByRef_(name, ref) {
@@ -621,10 +794,13 @@ function dashboardData_() {
   };
   const blocked = cal_().getEvents(new Date(Date.now() - 864e5), new Date(Date.now() + 120 * 864e5))
     .filter(function (ev) { return /^BLOCKED/.test(ev.getTitle()); })
-    .map(function (ev) { return { title: ev.getTitle().replace(/^BLOCKED · /, ''), start: fmt_(ev.getStartTime(), 'yyyy-MM-dd HH:mm'), end: fmt_(ev.getEndTime(), 'yyyy-MM-dd HH:mm') }; });
-  const forms = read('Consultation forms').map(function (f) { return { id: f['Form id'], received: f.Received, ref: f['Consult ref'], name: f.Name, phone: f.Phone, attention: f['Needs attention'] }; });
+    .map(function (ev) { return { id: ev.getId(), title: ev.getTitle().replace(/^BLOCKED · /, ''), start: fmt_(ev.getStartTime(), 'yyyy-MM-dd HH:mm'), end: fmt_(ev.getEndTime(), 'yyyy-MM-dd HH:mm') }; });
+  const fsh = sheet_('Consultation forms'), fn = fsh.getLastRow() - 1;
+  const forms = fn > 0 ? fsh.getRange(2, 1, fn, 7).getValues().filter(function (r) { return r[0]; }).map(function (r) {
+    return { id: r[0], received: cell_(r[1], 'Received'), ref: r[2], name: r[3], phone: r[4], attention: r[6] };
+  }) : [];
   return { bookings: read('Bookings'), consultations: read('Consultations'), clients: read('Clients'), messages: read('Messages'), forms: forms, blocked: blocked,
-           bank: SETTINGS.BANK, sheetUrl: book.getUrl() };
+           bank: bank_(), sheetUrl: book.getUrl() };
 }
 function cell_(v, key) {
   if (v instanceof Date) {
@@ -643,7 +819,7 @@ function hash_(s) {
 /* ===================== automatic WhatsApp to clients (optional) ===================== */
 function waEnabled_() { return !!(SETTINGS.WA_API.URL && SETTINGS.WA_API.TOKEN); }
 function bankLine_() {
-  const b = SETTINGS.BANK;
+  const b = bank_();
   return [['Account name', b.accountName], ['Bank', b.bank], ['IBAN', b.iban], ['Account no.', b.accountNumber]]
     .filter(function (r) { return r[1]; }).map(function (r) { return r[0] + ' ' + r[1]; }).join(' · ') || 'Nastasija will send the bank details';
 }
@@ -677,12 +853,20 @@ function sendReminders() {
 }
 
 /* ===================== WhatsApp alert to Nastasija (optional) ===================== */
+function alertKey_() { return SETTINGS.WHATSAPP_ALERT_KEY || PropertiesService.getScriptProperties().getProperty('WA_ALERT_KEY') || ''; }
 function alertWhatsApp_(text) {
-  if (!SETTINGS.WHATSAPP_ALERT_KEY) return;
+  const key = alertKey_();
+  if (!key) return '';
   try {
-    UrlFetchApp.fetch('https://api.callmebot.com/whatsapp.php?phone=' + SETTINGS.OWNER_WHATSAPP +
-      '&text=' + encodeURIComponent(text) + '&apikey=' + encodeURIComponent(SETTINGS.WHATSAPP_ALERT_KEY), { muteHttpExceptions: true });
-  } catch (err) { console.error('WhatsApp alert failed', err); }
+    const res = UrlFetchApp.fetch('https://api.callmebot.com/whatsapp.php?phone=' + SETTINGS.OWNER_WHATSAPP +
+      '&text=' + encodeURIComponent(String(text).slice(0, 1500)) + '&apikey=' + encodeURIComponent(key), { muteHttpExceptions: true });
+    return res.getResponseCode() + ' ' + res.getContentText().replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').slice(0, 300);
+  } catch (err) { console.error('WhatsApp alert failed', err); return String(err); }
+}
+/* Run this from the menu to check the WhatsApp alerts work. */
+function testWhatsApp() {
+  if (!alertKey_()) { Logger.log('No CallMeBot key yet: paste it into WHATSAPP_ALERT_KEY in SETTINGS, save, and run setup() first.'); return; }
+  Logger.log('Sent. CallMeBot replied: ' + alertWhatsApp_('Test from the By Nastasija website. WhatsApp alerts are working.'));
 }
 
 /* ===================== helpers ===================== */
@@ -711,9 +895,9 @@ function notifyOwner_(subject, rows, buttons) {
       (r[0] === 'History' ? r[1] : escape_(r[1])) + '</td></tr>';
   }).join('');
   const btns = (buttons || []).map(function (b) {
-    return '<a href="' + b.url + '" style="display:inline-block;background:#C6A47B;color:#171615;text-decoration:none;padding:12px 18px;margin:16px 8px 0 0;font-size:13px;letter-spacing:1px">' + escape_(b.label) + '</a>';
+    return '<a href="' + b.url + '" style="display:inline-block;background:#C6A47B;color:#171615;text-decoration:none;padding:12px 18px;margin:8px 8px 0 0;font-size:13px;letter-spacing:1px">' + escape_(b.label) + '</a>';
   }).join('');
   MailApp.sendEmail({ to: SETTINGS.OWNER_EMAIL, subject: subject, name: 'By Nastasija website',
-    htmlBody: wrap_('<table style="font-size:14px;border-collapse:collapse">' + table + '</table>' + btns +
+    htmlBody: wrap_((btns ? '<div style="margin:0 0 18px">' + btns + '</div>' : '') + '<table style="font-size:14px;border-collapse:collapse">' + table + '</table>' + btns +
       '<p style="font-size:12px;color:#7A6A5E;margin-top:18px"><a href="' + ss_().getUrl() + '">Open bookings sheet</a></p>') });
 }

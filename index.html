@@ -445,6 +445,26 @@ body.no-wa footer{padding-bottom:0}
 body.no-wa .wa-float{display:none}
 
 
+
+/* income */
+.inc-nav{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+.inc-nav .seg2{display:inline-flex;border:1px solid var(--line);background:var(--white)}
+.inc-nav .seg2 button{border:0;background:none;padding:9px 14px;font:500 .6rem var(--sans);letter-spacing:.18em;text-transform:uppercase;cursor:pointer;color:var(--muted)}
+.inc-nav .seg2 button[aria-pressed="true"]{background:var(--metal);background-size:180% 100%;color:#fff;text-shadow:0 1px 1px rgba(60,35,20,.45)}
+.inc-nav .arr{background:var(--white);border:1px solid var(--line);width:38px;height:38px;cursor:pointer;font-size:1rem}
+.inc-nav strong{font-family:var(--serif);font-weight:400;font-size:1.25rem;min-width:150px;text-align:center}
+.inc-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:22px}
+.inc-tiles div{background:var(--white);border:1px solid var(--line);padding:16px;display:grid;gap:4px}
+.inc-tiles span{font:500 .58rem var(--sans);letter-spacing:.2em;text-transform:uppercase;color:var(--muted)}
+.inc-tiles b{font-family:var(--serif);font-weight:400;font-size:1.7rem;color:var(--ink);line-height:1.1}
+.inc-tiles small{font-size:.76rem;color:var(--muted)}
+.inc-tbl{width:100%;border-collapse:collapse;background:var(--white);border:1px solid var(--line);font-size:.86rem}
+.inc-tbl th{font:500 .56rem var(--sans);letter-spacing:.2em;text-transform:uppercase;color:var(--muted);text-align:left;padding:10px 12px;border-bottom:1px solid var(--line)}
+.inc-tbl td{padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:middle}
+.inc-tbl td.num,.inc-tbl th.num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.inc-bar{height:8px;background:var(--nude);border-radius:0 4px 4px 0;min-width:60px}
+.inc-bar i{display:block;height:100%;background:var(--champagne-d);border-radius:0 4px 4px 0}
+@media (max-width:560px){.inc-tbl .hide-s{display:none}}
 /* yearly calendar (dashboard) */
 .yr-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:16px}
 .yr-nav{display:flex;align-items:center;gap:10px}
@@ -496,7 +516,7 @@ html.gated .gate{display:grid;min-height:100vh;min-height:100dvh;place-items:cen
 .gate-box h1{font-size:1.9rem;text-align:center;margin:0}
 .gate-box .btn{justify-content:center}
 </style>
-<script>(function(){var g=true;try{var v=JSON.parse(localStorage.getItem("bn_client")||"null");g=!(v&&v.exp>Date.now());}catch(e){}if(g&&!/^#admin/.test(location.hash))document.documentElement.classList.add("gated");})();</script>
+<script>(function(){var g=true;try{var v=JSON.parse(localStorage.getItem("bn_client")||"null");var a=JSON.parse(localStorage.getItem("bn_admin")||sessionStorage.getItem("bn_admin")||"null");g=!(v&&v.exp>Date.now())&&!(a&&a.exp>Date.now());}catch(e){}if(g&&!/^#admin/.test(location.hash))document.documentElement.classList.add("gated");})();</script>
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -521,6 +541,7 @@ html.gated .gate{display:grid;min-height:100vh;min-height:100dvh;place-items:cen
     <div class="field"><label for="g-pass">Password</label><input id="g-pass" type="password" autocomplete="current-password"></div>
     <p class="err" id="gErr" role="alert"></p>
     <button type="submit" class="btn" id="gBtn">Enter</button>
+    <a href="#admin" class="tlink" id="gStaff" style="justify-self:center;font-size:.6rem;margin-top:6px">Staff login</a>
   </form>
 </div>
 
@@ -988,6 +1009,7 @@ html.gated .gate{display:grid;min-height:100vh;min-height:100dvh;place-items:cen
       <div class="tabs" role="tablist" id="admTabs">
         <button role="tab" data-tab="agenda" aria-selected="true">Diary</button>
         <button role="tab" data-tab="year">Calendar</button>
+        <button role="tab" data-tab="income">Income</button>
         <button role="tab" data-tab="bookings">Bookings</button>
         <button role="tab" data-tab="clients">Clients</button>
         <button role="tab" data-tab="consults">Consultations</button>
@@ -1597,7 +1619,7 @@ function admRender(){
     const base=b.textContent.replace(/\d+$/,"").trim(); const c=counts[b.dataset.tab];
     b.innerHTML=esc(base)+(c?`<span class="ct">${c}</span>`:"");
   });
-  ({agenda:renderAgenda,year:renderYear,bookings:renderBookings,clients:renderClients,consults:renderConsults,messages:renderMessages,block:renderBlock})[ADM.tab]();
+  ({agenda:renderAgenda,year:renderYear,income:renderIncome,bookings:renderBookings,clients:renderClients,consults:renderConsults,messages:renderMessages,block:renderBlock})[ADM.tab]();
 }
 
 function bookingItem(b){
@@ -1858,6 +1880,153 @@ document.addEventListener("click",async e=>{
     admSay(ADM.demo?"Demo: unblocked (not saved).":"Unblocked. That time can be booked again on the website.");
   } else { b.disabled=false; b.textContent="Unblock"; delete b.dataset.sure; admSay((r&&r.message)||"Couldn't unblock. Please try again.",true); }
 });
+
+/* ================= dashboard: amend / move an appointment ================= */
+function openAmend(b){
+  const groups=CATS.filter(c=>SERVICES.some(x=>x.cat===c.id)).map(c=>`<optgroup label="${esc(c.title)}">${SERVICES.filter(x=>x.cat===c.id).map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join("")}</optgroup>`).join("");
+  const sv0=SERVICES.find(x=>x.name===b.Treatment), ad0=String(b["Add ons"]||"").split(", ").filter(Boolean);
+  const mins0=Math.max(5,toMin(String(b.End))-toMin(String(b.Start)));
+  const ph0=b.Phone?"0"+String(normPhone(b.Phone)).replace(/^971/,""):"";
+  openDrawer(`<p class="eyebrow gold">Amend booking ${esc(b.Ref)}</p><h2>${esc(b.Name)}</h2>
+    <p class="note">Change the date, time, treatment or details. Your Google Calendar moves with it. Nothing is sent to the client unless you tap the WhatsApp button afterwards.</p>
+    <div class="fields">
+      <div class="field"><label for="am-d">Date</label><input id="am-d" type="date" value="${esc(b.Date)}"></div>
+      <div class="field"><label for="am-t">Start time</label><input id="am-t" type="time" step="300" value="${esc(b.Start)}"></div>
+      <div class="field full"><label for="am-s">Treatment</label><select id="am-s">${groups}<option value="custom">Something else (type it below)</option></select></div>
+      <div class="field full" id="am-cw" hidden><label for="am-c">Treatment name</label><input id="am-c" value="${esc(sv0?"":b.Treatment)}"></div>
+      <div class="field full"><span class="flabel">Add ons</span><div class="chips2">${Object.entries(ADDONS).map(([k,a])=>`<label class="chip2"><input type="checkbox" name="am-a" value="${k}" ${ad0.includes(a.name)?"checked":""}><span>${esc(a.name)}</span></label>`).join("")}</div></div>
+      <div class="field"><label for="am-m">Length (minutes)</label><input id="am-m" type="number" min="5" step="5" value="${mins0}"></div>
+      <div class="field"><label for="am-pr">Price (AED)</label><input id="am-pr" type="number" min="0" step="10" value="${Number(b["Total (AED)"])||0}"></div>
+      <div class="field"><label for="am-p">Mobile</label><input id="am-p" type="tel" value="${esc(ph0)}"></div>
+      <div class="field"><label for="am-n">Name</label><input id="am-n" value="${esc(b.Name)}"></div>
+      <div class="field full"><label for="am-e">Email (optional)</label><input id="am-e" type="email" value="${esc(b.Email||"")}"></div>
+    </div>
+    <p class="note" id="am-sum"></p>
+    <p class="adm-msg" id="drMsg"></p>
+    <div class="row-btns"><button type="button" class="sbtn gold" id="amSave">Save changes</button><button type="button" class="sbtn" id="amBack">Back</button></div>`);
+  $("#am-s").value=sv0?sv0.id:"custom"; $("#am-cw").hidden=!!sv0;
+  const calc=()=>{ const sv=SERVICES.find(x=>x.id===$("#am-s").value), ad=$$('[name="am-a"]:checked').map(x=>ADDONS[x.value]);
+    $("#am-cw").hidden=$("#am-s").value!=="custom";
+    $("#am-m").value=(sv?sv.mins:mins0)+ad.reduce((a,x)=>a+x.mins,0); $("#am-pr").value=(sv?sv.price:Number(b["Total (AED)"])||0)+ad.reduce((a,x)=>a+x.price,0); sum(); };
+  const sum=()=>{ $("#amSave").textContent="Save changes"; $("#amSave").onclick=()=>save(false); const t=$("#am-t").value, m=Number($("#am-m").value)||0, pr=Number($("#am-pr").value)||0;
+    $("#am-sum").textContent=(t?`${prettyDay($("#am-d").value)}, ${t} to ${hm(toMin(t)+m)} · `:"")+`${pr} AED · 50% deposit ${Math.round(pr*CONFIG.depositPercent/100)} AED`; };
+  $("#am-s").onchange=calc; $$('[name="am-a"]').forEach(x=>x.onchange=calc);
+  ["am-d","am-t","am-m","am-pr"].forEach(id=>$("#"+id).oninput=sum); sum();
+  $("#amBack").onclick=()=>openBooking(b.Ref);
+  const save=async(force)=>{
+    const sid=$("#am-s").value, pv=$("#am-p").value.trim();
+    const p={ref:b.Ref,service:sid==="custom"?"":sid,customName:$("#am-c").value.trim(),addons:$$('[name="am-a"]:checked').map(x=>x.value),
+      name:$("#am-n").value.trim(),phone:pv?normPhone(pv):"",email:$("#am-e").value.trim(),date:$("#am-d").value,time:$("#am-t").value,
+      mins:Number($("#am-m").value),price:Number($("#am-pr").value),force:!!force};
+    let err="";
+    if(pv&&!phoneOk(pv)) err="Please check the mobile number, for example 050 123 4567.";
+    else if(sid==="custom"&&!p.customName) err="Please type the treatment name.";
+    else if(!p.date||!p.time) err="Please add the date and start time.";
+    else if(!(p.mins>0)) err="Please add the length in minutes.";
+    $("#drMsg").textContent=err; if(err) return;
+    const s0=toMin(p.time), e0=s0+p.mins;
+    const clash=(admItemsByDay()[p.date]||[]).filter(x=>x.ref!==b.Ref&&toMin(x.from)<e0+CONFIG.bufferMins&&toMin(x.to)+CONFIG.bufferMins>s0);
+    const ask=t=>{ $("#drMsg").textContent=t+" Tap Save anyway if that’s right."; $("#amSave").textContent="Save anyway"; $("#amSave").onclick=()=>save(true); };
+    if(!force&&clash.length){ ask(`This overlaps with ${clash.map(x=>(x.n||x.t)+" "+x.from+" to "+x.to).join(", ")}.`); return; }
+    $("#amSave").disabled=true; $("#amSave").textContent="Saving…"; $("#drMsg").textContent="Saving and moving it in your calendar, this can take a few seconds…";
+    const r=ADM.demo?{ok:true}:await admCall("admin_amend",Object.assign({kind:"booking"},p)).catch(()=>null);
+    $("#amSave").disabled=false; $("#amSave").textContent="Save changes";
+    if(r&&r.error==="clash"){ ask(r.message); return; }
+    if(!(r&&r.ok)){ $("#drMsg").textContent=(r&&r.message)||"Couldn't save. Please try again."; return; }
+    const sv=SERVICES.find(x=>x.id===sid), old=prettyDay(b.Date)+" at "+b.Start;
+    Object.assign(b,{Date:p.date,Start:p.time,End:r.end||hm(e0),Treatment:sv?sv.name:(p.customName||b.Treatment),"Add ons":p.addons.map(k=>ADDONS[k].name).join(", "),
+      Name:p.name||b.Name,Phone:p.phone?"+"+p.phone:"",Email:p.email,"Total (AED)":p.price,"50% deposit (AED)":Math.round(p.price*CONFIG.depositPercent/100)});
+    ADM.yearBusy={}; admRender(); loadBusy();
+    openBooking(b.Ref);
+    const ph=normPhone(b.Phone), when=prettyDay(b.Date)+" at "+b.Start;
+    $("#drMsg").innerHTML=(ADM.demo?"Demo: changed on this screen only. ":"Saved ✓ Your calendar has moved too. ")+(ph.length>=11?`<a class="tlink" style="font-size:.6rem" target="_blank" rel="noopener" href="${wa(ph,`Hi ${String(b.Name).split(" ")[0]}, just to confirm your ${b.Treatment} with By Nastasija has been moved to ${when}. See you then, Nastasija`)}">Tell the client on WhatsApp</a>`:"");
+  };
+  $("#amSave").onclick=()=>save(false);
+}
+function openAmendConsult(c){
+  openDrawer(`<p class="eyebrow gold">Move consultation ${esc(c.Ref)}</p><h2>${esc(c.Name)}</h2>
+    <div class="fields">
+      <div class="field"><label for="ac-d">Date</label><input id="ac-d" type="date" value="${esc(c.Date)}"></div>
+      <div class="field"><label for="ac-t">Time</label><input id="ac-t" type="time" step="300" value="${esc(c.Time)}"></div>
+      <div class="field full"><span class="flabel">Type</span><div class="chips2">${["Video call","Phone call"].map(t=>`<label class="chip2"><input type="radio" name="ac-ty" value="${t}" ${c.Type===t?"checked":""}><span>${t}</span></label>`).join("")}</div></div>
+    </div>
+    <p class="adm-msg" id="drMsg"></p>
+    <div class="row-btns"><button type="button" class="sbtn gold" id="acSave">Save changes</button><button type="button" class="sbtn" id="acBack">Back</button></div>`);
+  $("#acBack").onclick=()=>openConsult(c.Ref);
+  const save=async(force)=>{
+    const p={kind:"consult",ref:c.Ref,date:$("#ac-d").value,time:$("#ac-t").value,type:($('[name="ac-ty"]:checked')||{}).value||c.Type,force:!!force};
+    if(!p.date||!p.time){ $("#drMsg").textContent="Please add the date and time."; return; }
+    $("#acSave").disabled=true; $("#drMsg").textContent="Saving…";
+    const r=ADM.demo?{ok:true}:await admCall("admin_amend",p).catch(()=>null);
+    $("#acSave").disabled=false;
+    if(r&&r.error==="clash"){ $("#drMsg").textContent=r.message+" Tap Save anyway if that’s right."; $("#acSave").textContent="Save anyway"; $("#acSave").onclick=()=>save(true); return; }
+    if(!(r&&r.ok)){ $("#drMsg").textContent=(r&&r.message)||"Couldn't save. Please try again."; return; }
+    Object.assign(c,{Date:p.date,Time:p.time,Type:p.type}); ADM.yearBusy={}; admRender(); loadBusy();
+    openConsult(c.Ref);
+    const ph=normPhone(c.Phone);
+    $("#drMsg").innerHTML=(ADM.demo?"Demo: changed on this screen only. ":"Saved ✓ Your calendar has moved too. ")+(ph.length>=11?`<a class="tlink" style="font-size:.6rem" target="_blank" rel="noopener" href="${wa(ph,`Hi ${String(c.Name).split(" ")[0]}, your free ${String(p.type).toLowerCase()} with By Nastasija has been moved to ${prettyDay(p.date)} at ${p.time}. See you then, Nastasija`)}">Tell the client on WhatsApp</a>`:"");
+  };
+  $("#acSave").onclick=()=>save(false);
+}
+
+
+/* ================= dashboard: income ================= */
+ADM.inc={mode:"month",ref:todayStr()};
+function incRange(){
+  const [y,m,d]=ADM.inc.ref.split("-").map(Number), ref=new Date(y,m-1,d);
+  let a,b,label;
+  if(ADM.inc.mode==="week"){ a=new Date(ref); a.setDate(a.getDate()-((a.getDay()+6)%7)); b=new Date(a); b.setDate(b.getDate()+6);
+    label=a.toLocaleDateString("en-GB",{day:"numeric",month:"short"})+" to "+b.toLocaleDateString("en-GB",{day:"numeric",month:"short"}); }
+  else if(ADM.inc.mode==="month"){ a=new Date(y,m-1,1); b=new Date(y,m,0); label=MONTHS[m-1]+" "+y; }
+  else { a=new Date(y,0,1); b=new Date(y,11,31); label=String(y); }
+  return {from:ymd(a),to:ymd(b),label};
+}
+function incShift(dir){
+  const [y,m,d]=ADM.inc.ref.split("-").map(Number), r=new Date(y,m-1,d);
+  if(ADM.inc.mode==="week") r.setDate(r.getDate()+7*dir); else if(ADM.inc.mode==="month") r.setMonth(r.getMonth()+dir,1); else r.setFullYear(r.getFullYear()+dir);
+  ADM.inc.ref=ymd(r); renderIncome();
+}
+function renderIncome(){
+  const D=ADM.data, R=incRange(), amt=b=>Number(b["Total (AED)"])||0, dep=b=>Number(b["50% deposit (AED)"])||0;
+  const inP=D.bookings.filter(b=>b.Date>=R.from&&b.Date<=R.to);
+  const done=inP.filter(b=>b.Status==="Completed"), paid=inP.filter(b=>b.Status==="Deposit paid"), waiting=inP.filter(b=>b.Status==="Reserved, awaiting deposit");
+  const earned=done.reduce((a,b)=>a+amt(b),0), upcoming=paid.reduce((a,b)=>a+amt(b),0), depIn=paid.reduce((a,b)=>a+dep(b),0);
+  // by treatment (completed only)
+  const by={}; done.forEach(b=>{ const k=b.Treatment||"Other"; (by[k]=by[k]||{n:0,t:0}); by[k].n++; by[k].t+=amt(b); });
+  const rows=Object.entries(by).sort((a,b)=>b[1].t-a[1].t), max=rows.length?rows[0][1].t:0;
+  // by week inside a month or by month inside a year
+  let split="";
+  if(ADM.inc.mode!=="week"&&done.length){
+    const g={}; done.forEach(b=>{ let k;
+      if(ADM.inc.mode==="year") k=b.Date.slice(0,7);
+      else { const [y,m,d]=b.Date.split("-").map(Number), dt=new Date(y,m-1,d); dt.setDate(dt.getDate()-((dt.getDay()+6)%7)); k=ymd(dt); }
+      (g[k]=g[k]||{n:0,t:0}); g[k].n++; g[k].t+=amt(b); });
+    const gr=Object.entries(g).sort((a,b)=>a[0]<b[0]?-1:1), gm=Math.max(...gr.map(x=>x[1].t));
+    split=`<p class="eyebrow" style="margin:24px 0 10px">${ADM.inc.mode==="year"?"Month by month":"Week by week"}</p>
+      <table class="inc-tbl"><thead><tr><th>${ADM.inc.mode==="year"?"Month":"Week starting"}</th><th class="num">Treatments</th><th class="num">Earned</th><th class="hide-s" style="width:35%"></th></tr></thead><tbody>
+      ${gr.map(([k,v])=>`<tr title="${esc(v.n+" treatments · "+fmt(v.t))}"><td>${esc(ADM.inc.mode==="year"?MONTHS[Number(k.slice(5,7))-1]:shortDay(k))}</td><td class="num">${v.n}</td><td class="num">${fmt(v.t)}</td><td class="hide-s"><div class="inc-bar"><i style="width:${gm?Math.max(3,v.t/gm*100):0}%"></i></div></td></tr>`).join("")}</tbody></table>`;
+  }
+  $("#admPane").innerHTML=`<div class="inc-nav"><div class="seg2" role="group" aria-label="Period">${["week","month","year"].map(m=>`<button type="button" data-im="${m}" aria-pressed="${ADM.inc.mode===m}">${m==="week"?"Week":m==="month"?"Month":"Year"}</button>`).join("")}</div>
+      <button type="button" class="arr" id="incPrev" aria-label="Previous">‹</button><strong>${esc(R.label)}</strong><button type="button" class="arr" id="incNext" aria-label="Next">›</button>
+      <button type="button" class="sbtn" id="incNow">This ${ADM.inc.mode}</button></div>
+    <div class="inc-tiles">
+      <div><span>Earned</span><b>${fmt(earned)}</b><small>${done.length} completed treatment${done.length===1?"":"s"}</small></div>
+      <div><span>Average per treatment</span><b>${fmt(done.length?Math.round(earned/done.length):0)}</b><small>completed only</small></div>
+      <div><span>Booked and paid deposit</span><b>${fmt(upcoming)}</b><small>${paid.length} booking${paid.length===1?"":"s"} · ${fmt(depIn)} deposits in</small></div>
+      <div><span>Awaiting deposit</span><b>${waiting.length}</b><small>${fmt(waiting.reduce((a,b)=>a+amt(b),0))} if confirmed</small></div>
+    </div>
+    <p class="eyebrow" style="margin-bottom:10px">Earned by treatment</p>
+    ${rows.length?`<table class="inc-tbl"><thead><tr><th>Treatment</th><th class="num">Done</th><th class="num">Earned</th><th class="hide-s" style="width:35%"></th></tr></thead><tbody>
+      ${rows.map(([k,v])=>`<tr title="${esc(k+": "+v.n+" · "+fmt(v.t))}"><td>${esc(k)}</td><td class="num">${v.n}</td><td class="num">${fmt(v.t)}</td><td class="hide-s"><div class="inc-bar"><i style="width:${max?Math.max(3,v.t/max*100):0}%"></i></div></td></tr>`).join("")}
+      <tr><td><b style="font-weight:500">Total</b></td><td class="num"><b style="font-weight:500">${done.length}</b></td><td class="num"><b style="font-weight:500">${fmt(earned)}</b></td><td class="hide-s"></td></tr></tbody></table>`
+      :`<div class="empty-s">No completed treatments in this period yet. When you set a booking to <b>Completed</b>, it’s counted here.</div>`}
+    ${split}
+    <p class="note" style="margin-top:16px">Earned counts bookings marked <b>Completed</b>, using the price on the booking (add ons included). Set bookings to Completed after each appointment so this stays accurate. Cancelled and no shows are left out.</p>`;
+  $$("#admPane [data-im]").forEach(b=>b.onclick=()=>{ ADM.inc.mode=b.dataset.im; renderIncome(); });
+  $("#incPrev").onclick=()=>incShift(-1); $("#incNext").onclick=()=>incShift(1);
+  $("#incNow").onclick=()=>{ ADM.inc.ref=todayStr(); renderIncome(); };
+}
+
 function wireOpen(){ $$("#admPane [data-open]").forEach(el=>el.onclick=()=>{ const [k,id]=el.dataset.open.split(/:(.+)/); if(k==="b") openBooking(id); else if(k==="c") openConsult(id); else openClient(id); }); }
 function openDrawer(html){ $("#admDrawerPane").innerHTML=`<button type="button" class="x" aria-label="Close" id="drClose">×</button>`+html; $("#admDrawer").hidden=false; $("#drClose").onclick=closeDrawer; }
 function closeDrawer(){ $("#admDrawer").hidden=true; }
@@ -1883,7 +2052,7 @@ function openBooking(ref){
     <div class="row-btns"><button type="button" class="sbtn gold" id="drSave">Save status</button>
       <a class="sbtn" target="_blank" rel="noopener" href="${wa(p,admDepositMsg(b))}">Send deposit message</a>
       <a class="sbtn" target="_blank" rel="noopener" href="${wa(p)}">WhatsApp client</a>
-      <button type="button" class="sbtn" id="drClient">Client profile</button></div>
+      <button type="button" class="sbtn" id="drClient">Client profile</button><button type="button" class="sbtn" id="drAmend">Amend / move</button></div>
     <p class="note">Deposit received? Set the status to Deposit paid and the calendar event turns green. Cancelled frees the time on the website.</p>`);
   $("#drSave").onclick=()=>{
     const st=$("#dr-st").value, prev=b.Status; if(st===prev){ $("#drMsg").textContent="That is already the status."; return; }
@@ -1892,6 +2061,7 @@ function openBooking(ref){
     bgSave("The status for "+b.Name,"admin_status",{kind:"booking",ref:b.Ref,status:st},()=>{ if(st==="Cancelled") loadBusy(); },()=>{ b.Status=prev; admRender(); });
   };
   $("#drClient").onclick=()=>openClient(p);
+  $("#drAmend").onclick=()=>openAmend(b);
   wireNote("booking",b);
 }
 function wireNote(kind,obj){
@@ -1941,7 +2111,8 @@ function openConsult(ref){
     <div class="row-btns" style="margin-top:-6px"><button type="button" class="sbtn" id="drNoteSave">Save notes</button><span class="note" id="drNoteMsg"></span></div>
     <div class="field"><label for="dr-st">Status</label><select id="dr-st">${CONS_ST.map(s=>`<option ${s===c.Status?"selected":""}>${s}</option>`).join("")}</select></div>
     <p class="adm-msg" id="drMsg"></p>
-    <div class="row-btns"><button type="button" class="sbtn gold" id="drSave">Save status</button><a class="sbtn" target="_blank" rel="noopener" href="${wa(p,msg)}">Confirm on WhatsApp</a>${ff?`<button type="button" class="sbtn" id="drForm">View form</button>`:`<a class="sbtn" target="_blank" rel="noopener" href="${wa(p,remind)}">Send form link</a>`}<button type="button" class="sbtn" id="drClient">Client profile</button></div>`);
+    <div class="row-btns"><button type="button" class="sbtn gold" id="drSave">Save status</button><a class="sbtn" target="_blank" rel="noopener" href="${wa(p,msg)}">Confirm on WhatsApp</a>${ff?`<button type="button" class="sbtn" id="drForm">View form</button>`:`<a class="sbtn" target="_blank" rel="noopener" href="${wa(p,remind)}">Send form link</a>`}<button type="button" class="sbtn" id="drClient">Client profile</button><button type="button" class="sbtn" id="drAmend">Move call</button></div>`);
+  $("#drAmend").onclick=()=>openAmendConsult(c);
   if(ff) $("#drForm").onclick=()=>openForm(ff.id);
   wireNote("consult",c);
   $("#drSave").onclick=()=>{
@@ -2223,7 +2394,7 @@ const VIEWS=["home","about","treatments","new","prices","book","consult","contac
 let pendingJump=null;
 function route(){
   const h=location.hash.slice(1), v=VIEWS.includes(h)?h:"home";
-  if(CONFIG.clientLogin){ if(v==="admin") gateHide(); else if(!CLIENT.token){ gateShow($("#gErr").textContent); return; } }
+  if(CONFIG.clientLogin){ if(v==="admin"||ADM.token||admLoad()) gateHide(); else if(!CLIENT.token){ gateShow($("#gErr").textContent); return; } }
   $$("section.view").forEach(s=>s.classList.toggle("on",s.dataset.view===v));
   $$("nav.main a").forEach(a=>{ if(a.getAttribute("href")==="#"+v) a.setAttribute("aria-current","page"); else a.removeAttribute("aria-current"); });
   $("#top").classList.remove("open"); $("#menuBtn").setAttribute("aria-expanded","false");
