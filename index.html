@@ -516,7 +516,7 @@ html.gated .gate{display:grid;min-height:100vh;min-height:100dvh;place-items:cen
 .gate-box h1{font-size:1.9rem;text-align:center;margin:0}
 .gate-box .btn{justify-content:center}
 </style>
-<script>(function(){var g=true;try{var v=JSON.parse(localStorage.getItem("bn_client")||"null");var a=JSON.parse(localStorage.getItem("bn_admin")||sessionStorage.getItem("bn_admin")||"null");g=!(v&&v.exp>Date.now())&&!(a&&a.exp>Date.now());}catch(e){}if(g&&!/^#admin/.test(location.hash))document.documentElement.classList.add("gated");})();</script>
+<script>(function(){var g=true;try{try{localStorage.removeItem("bn_client");}catch(e){}var v=null;var a=JSON.parse(localStorage.getItem("bn_admin")||sessionStorage.getItem("bn_admin")||"null");g=!(v&&v.exp>Date.now())&&!(a&&a.exp>Date.now());}catch(e){}if(g&&!/^#admin/.test(location.hash))document.documentElement.classList.add("gated");})();</script>
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -1169,10 +1169,10 @@ const phoneOk = v => normPhone(v).length>=11;
 const wa = (num,text) => "https://wa.me/"+num+(text?"?text="+encodeURIComponent(text):"");
 /* client login */
 const CLIENT={token:null,phone:""};
-try{ const v=JSON.parse(localStorage.getItem("bn_client")||"null"); if(v&&v.exp>Date.now()){ CLIENT.token=v.token; CLIENT.phone=v.phone; } }catch(e){}
+// clients log in every time they open the site: the login is kept only while the page is open, never saved on the device
 function gateShow(msg){ if(!CONFIG.clientLogin) return; document.documentElement.classList.add("gated"); $("#gErr").textContent=msg||""; }
 function gateHide(){ document.documentElement.classList.remove("gated"); }
-function clientLogout(msg){ CLIENT.token=null; try{ localStorage.removeItem("bn_client"); }catch(e){} if(location.hash!=="#admin") gateShow(msg); }
+function clientLogout(msg){ CLIENT.token=null; if(location.hash!=="#admin") gateShow(msg); }
 function clientCheck(j){ if(j&&j.error==="client_auth"){ clientLogout(j.message||"Please log in again."); } return j; }
 async function api(action, payload){
   if(!CONFIG.apiUrl) return null;
@@ -2380,7 +2380,6 @@ $("#gateForm").addEventListener("submit",async e=>{
     const r=await fetch(CONFIG.apiUrl,{method:"POST",body:JSON.stringify({action:"client_login",phone:normPhone(pv),password:pw})}).then(x=>x.json());
     if(r&&r.ok&&r.token){
       CLIENT.token=r.token; CLIENT.phone=normPhone(pv);
-      try{ localStorage.setItem("bn_client",JSON.stringify({token:r.token,phone:CLIENT.phone,exp:Date.now()+(r.days||30)*864e5})); }catch(err){}
       $("#g-pass").value=""; gateHide(); clientPrefill(); route(); loadBusy();
     } else $("#gErr").textContent=(r&&r.message)||"That password is not right.";
   }catch(err){ $("#gErr").textContent="Couldn't connect. Please check your internet and try again."; }
