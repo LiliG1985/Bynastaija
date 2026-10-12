@@ -189,7 +189,7 @@ main section.view.on{display:block}
 .cat-head svg{width:40px;height:40px;color:var(--champagne-d)}
 .cat-head p{color:var(--muted)}
 .svc-list{display:grid;grid-template-columns:1fr 1fr;gap:0 clamp(24px,5vw,64px)}
-.svc{display:grid;grid-template-columns:1fr auto;gap:8px 20px;padding-block:24px;border-bottom:1px solid var(--line);align-content:start}
+.svc{display:grid;grid-template-columns:1fr;gap:8px 20px;padding-block:24px;border-bottom:1px solid var(--line);align-content:start}
 .svc h3{font-size:1.18rem}
 .svc .meta{font-size:.66rem;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
 .svc p{grid-column:1/-1;color:var(--muted);font-size:.92rem}
@@ -507,6 +507,20 @@ body.no-wa .wa-float{display:none}
 .sigpad{display:block;width:100%;max-width:600px;aspect-ratio:600/170;height:auto;background:#fff;border:1px solid var(--cashmere);touch-action:none;cursor:crosshair}
 .fm-intro{display:grid;gap:10px;margin-bottom:26px}
 
+
+/* loyalty card */
+.loy{position:fixed;inset:0;z-index:80;background:rgba(23,22,21,.35);display:grid;place-items:center;padding:16px}
+.loy[hidden]{display:none}
+.loy-card{width:100%;max-width:420px;background:var(--white);border:1px solid var(--line);padding:clamp(24px,6vw,36px);display:grid;gap:16px;text-align:center;box-shadow:0 20px 60px rgba(60,35,20,.18)}
+.loy-card img{width:110px;justify-self:center}
+.loy-card h2{font-size:1.7rem;margin:0}
+.loy-stamps{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;justify-items:center;margin:4px 0}
+.loy-stamps span{width:46px;height:46px;border-radius:50%;border:1px dashed var(--cashmere);display:grid;place-items:center;font:500 .7rem var(--sans);color:var(--taupe);position:relative}
+.loy-stamps span.on{border:0;background:var(--metal);background-size:180% 100%;color:#fff;text-shadow:0 1px 1px rgba(60,35,20,.45)}
+.loy-stamps span.prize{border-style:solid;border-color:var(--champagne-d);color:var(--champagne-d)}
+.loy-stamps span.prize.on{color:#fff}
+.loy-msg{font-family:var(--serif);font-size:1.15rem;line-height:1.4;color:var(--ink);margin:0}
+.loy-key{display:flex;justify-content:center;gap:18px;font-size:.78rem;color:var(--muted)}
 /* client login (whole site is for clients only) */
 .gate{display:none}
 html.gated body>*:not(#gate){display:none!important}
@@ -543,6 +557,20 @@ html.gated .gate{display:grid;min-height:100vh;min-height:100dvh;place-items:cen
     <button type="submit" class="btn" id="gBtn">Enter</button>
     <a href="#admin" class="tlink" id="gStaff" style="justify-self:center;font-size:.6rem;margin-top:6px">Staff login</a>
   </form>
+</div>
+
+
+<div class="loy" id="loy" hidden role="dialog" aria-labelledby="loyTitle">
+  <div class="loy-card">
+    <img src="img/logo-n.png" alt="by Nastasija">
+    <p class="eyebrow gold" style="margin:0">Loyalty card</p>
+    <h2 id="loyTitle">Welcome back</h2>
+    <div class="loy-stamps" id="loyStamps"></div>
+    <div class="loy-key"><span>5th visit · free gift</span><span>10th visit · free treatment</span></div>
+    <p class="loy-msg" id="loyMsg"></p>
+    <p class="note" style="margin:0">One stamp for every completed treatment.</p>
+    <button type="button" class="btn" id="loyGo" style="justify-content:center">Continue</button>
+  </div>
 </div>
 
 <header class="top" id="top">
@@ -585,10 +613,10 @@ html.gated .gate{display:grid;min-height:100vh;min-height:100dvh;place-items:cen
   </div>
 
   <div class="icons">
-    <a href="#treatments" data-jump="cat-skin"><svg><use href="#i-face"/></svg><b>Skin treatments</b><span>from 500 AED</span></a>
-    <a href="#treatments" data-jump="cat-needling"><svg><use href="#i-pen"/></svg><b>Microneedling</b><span>from 850 AED</span></a>
-    <a href="#treatments" data-jump="cat-pmu"><svg><use href="#i-lips"/></svg><b>PMU</b><span>from 1,200 AED</span></a>
-    <a href="#treatments" data-jump="cat-addons"><svg><use href="#i-lash"/></svg><b>Lash lift add on</b><span>200 AED</span></a>
+    <a href="#treatments" data-jump="cat-skin"><svg><use href="#i-face"/></svg><b>Skin treatments</b><span>Peels and facials</span></a>
+    <a href="#treatments" data-jump="cat-needling"><svg><use href="#i-pen"/></svg><b>Microneedling</b><span>Dermapen 4</span></a>
+    <a href="#treatments" data-jump="cat-pmu"><svg><use href="#i-lips"/></svg><b>PMU</b><span>Lips and brows</span></a>
+    <a href="#treatments" data-jump="cat-addons"><svg><use href="#i-lash"/></svg><b>Lash lift add on</b><span>With any treatment</span></a>
   </div>
 
   <div class="split white">
@@ -621,7 +649,7 @@ html.gated .gate{display:grid;min-height:100vh;min-height:100dvh;place-items:cen
         <div class="treats"><span>Fine lines</span><span>Acne scarring</span><span>Pigmentation</span><span>Enlarged pores</span><span>Texture</span><span>Firmness</span></div>
         <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center">
           <button type="button" class="btn" data-book="mn-salmon">Book microneedling</button>
-          <span class="note">From 850 AED · approx. 70 to 90 min</span>
+          <span class="note">Approx. 70 to 90 min</span>
         </div>
       </div>
     </div>
@@ -717,7 +745,7 @@ html.gated .gate{display:grid;min-height:100vh;min-height:100dvh;place-items:cen
 <!-- TREATMENTS -->
 <section class="view" data-view="treatments">
   <div class="pbanner">
-    <div class="txt"><p class="eyebrow gold">Treatments</p><h1>Discover the transformation</h1><p class="lede">All prices in AED. New to By Nastasija? Start with a free consultation.</p></div>
+    <div class="txt"><p class="eyebrow gold">Treatments</p><h1>Discover the transformation</h1><p class="lede">New to By Nastasija? Start with a free consultation. See the <a href="#prices">price list</a> for prices.</p></div>
     <div class="img"><img loading="lazy" decoding="async" src="img/peel-face.jpg" alt="" style="object-position:50% 55%"></div>
   </div>
   <div class="wrap" id="svcRoot" style="padding-bottom:clamp(64px,8vw,110px)"></div>
@@ -1072,7 +1100,7 @@ html.gated .gate{display:grid;min-height:100vh;min-height:100dvh;place-items:cen
     </div>
     <div><h4>Explore</h4><nav><a href="#about">About</a><a href="#treatments">Treatments</a><a href="#new">What’s new</a><a href="#prices">Prices</a></nav></div>
     <div><h4>Book</h4><nav><a href="#book">Book a treatment</a><a href="#consult">Free consultation</a><a href="#contact">Contact</a><a class="ig-link" href="#" target="_blank" rel="noopener">Instagram</a></nav></div>
-    <div class="base"><span>© <span id="yr"></span> By Nastasija</span><span><span id="footLoc"></span> · <a href="#form">Consultation form</a> · <a href="#" id="clientLogout">Log out</a> · <a href="#admin">Studio login</a></span></div>
+    <div class="base"><span>© <span id="yr"></span> By Nastasija</span><span><span id="footLoc"></span> · <a href="#form">Consultation form</a> · <a href="#" id="loyLink">Loyalty card</a> · <a href="#" id="clientLogout">Log out</a> · <a href="#admin">Studio login</a></span></div>
   </div>
 </footer>
 
@@ -1203,15 +1231,15 @@ $$("[data-copy]").forEach(b=>b.addEventListener("click",()=>{
 $("#baGrid").innerHTML=BA.map(([f,c])=>`<figure class="ba"><div class="frame"><img src="img/${f}" alt="${c} before and after" loading="lazy"><span class="tag t1">Before</span><span class="tag t2">After</span></div><figcaption>${c}</figcaption></figure>`).join("");
 const newsAction=n=>n.book?`<button type="button" class="tlink" data-book="${n.book}">Book now</button>`:`<a class="tlink" href="#${n.link}">${n.link==="consult"?"Choose a time":"Book now"}</a>`;
 $("#newsPreview").innerHTML=NEWS.slice(0,3).map(n=>`<article class="news"><span class="pill">${n.tag}</span><h3>${n.title}</h3><p>${n.text.split(". ")[0]}.</p>${newsAction(n)}</article>`).join("");
-$("#newRoot").innerHTML=NEWS.map(n=>`<article class="wn"><div class="img"><img src="${n.img}" alt="" loading="lazy" style="object-position:${n.pos}"></div><div class="txt"><span class="pill">${n.tag}</span><h2>${n.title}</h2><p>${n.text}</p>${n.price?`<p class="price">${n.price}</p>`:""}<div>${newsAction(n)}</div></div></article>`).join("");
+$("#newRoot").innerHTML=NEWS.map(n=>`<article class="wn"><div class="img"><img src="${n.img}" alt="" loading="lazy" style="object-position:${n.pos}"></div><div class="txt"><span class="pill">${n.tag}</span><h2>${n.title}</h2><p>${n.text}</p><div>${newsAction(n)}</div></div></article>`).join("");
 $("#svcRoot").innerHTML=CATS.map(c=>`
   <div class="cat" id="cat-${c.id}">
     <div class="cat-head"><div class="img"><img src="${c.img}" alt="" loading="lazy" style="object-position:${c.pos}"></div>
       <div class="t"><svg><use href="#${c.icon}"/></svg><h2>${c.title}</h2><p>${c.blurb}</p></div></div>
     <div class="svc-list">${SERVICES.filter(s=>s.cat===c.id).map(s=>`
-      <div class="svc"><div><h3>${s.name}</h3><span class="meta">${s.dur}</span></div><span class="price">${sPrice(s)}</span><p>${s.desc}</p>
+      <div class="svc"><div><h3>${s.name}</h3><span class="meta">${s.dur}</span></div><p>${s.desc}</p>
         <button type="button" class="tlink go" data-book="${s.id}">Book this</button></div>`).join("")}
-      ${c.id==="addons"?Object.values(ADDONS).map(a=>`<div class="svc"><div><h3>${a.name} add on</h3><span class="meta">With any treatment</span></div><span class="price">${fmt(a.price)}</span><p>${a.note}. Tick it when you book your treatment.</p></div>`).join(""):""}
+      ${c.id==="addons"?Object.values(ADDONS).map(a=>`<div class="svc"><div><h3>${a.name} add on</h3><span class="meta">With any treatment</span></div><p>${a.note}. Tick it when you book your treatment.</p></div>`).join(""):""}
     </div>
   </div>`).join("");
 const plGroups=[["Skin",["ph-peel","ph-peel-plus","circadia","oxygen","biorepeel","nuqy","glow-go","signature"]],["Dermapen 4 microneedling",["mn-hyla","mn-salmon","mn-exo","mn-stem","mn-biorepeel"]],["Semi permanent makeup",["lip-blush","brows","top-up","top-up-12","top-up-24"]],["Add ons",[]]];
@@ -1439,7 +1467,7 @@ bkRender();
 
 /* ================= home quick book ================= */
 const qb={svc:null,date:null,time:null};
-$("#qb-svc").insertAdjacentHTML("beforeend",CATS.filter(c=>SERVICES.some(s=>s.cat===c.id)).map(c=>`<optgroup label="${c.title}">${SERVICES.filter(s=>s.cat===c.id).map(s=>`<option value="${s.id}">${s.name} · ${sPrice(s)}</option>`).join("")}</optgroup>`).join(""));
+$("#qb-svc").insertAdjacentHTML("beforeend",CATS.filter(c=>SERVICES.some(s=>s.cat===c.id)).map(c=>`<optgroup label="${c.title}">${SERVICES.filter(s=>s.cat===c.id).map(s=>`<option value="${s.id}">${s.name}</option>`).join("")}</optgroup>`).join(""));
 const qbCal=Calendar($("#qbCal"),{slotsFor:d=>treatmentSlots(d,qb.svc?qb.svc.mins:60),onChange:(d,t)=>{qb.date=d;qb.time=t;qbRender();}});
 function qbRender(){
   const s=qb.svc, dep=s?Math.round(s.price*CONFIG.depositPercent/100):0;
@@ -1882,6 +1910,13 @@ document.addEventListener("click",async e=>{
 });
 
 /* ================= dashboard: amend / move an appointment ================= */
+function admLoyalty(b){
+  const ph=normPhone(b.Phone); if(ph.length<11) return "No mobile on this booking";
+  const done=ADM.data.bookings.filter(x=>x.Status==="Completed"&&normPhone(x.Phone)===ph).sort((a,c)=>(a.Date+a.Start).localeCompare(c.Date+c.Start));
+  const pos=done.findIndex(x=>x.Ref===b.Ref), n=pos>=0?pos+1:done.length+1, c=n%10;
+  const tag=c===5?" · <b>free gift due</b> 🎁":c===0?" · <b>free treatment</b> ✨":"";
+  return `${pos>=0?"Visit":"Will be visit"} ${n}${tag}`;
+}
 function openAmend(b){
   const groups=CATS.filter(c=>SERVICES.some(x=>x.cat===c.id)).map(c=>`<optgroup label="${esc(c.title)}">${SERVICES.filter(x=>x.cat===c.id).map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join("")}</optgroup>`).join("");
   const sv0=SERVICES.find(x=>x.name===b.Treatment), ad0=String(b["Add ons"]||"").split(", ").filter(Boolean);
@@ -2044,7 +2079,7 @@ function openBooking(ref){
   openDrawer(`<p class="eyebrow gold">Booking ${esc(b.Ref)}</p><h2>${esc(b.Name)}</h2>
     <dl class="kv"><dt>Treatment</dt><dd>${esc(b.Treatment)}${b["Add ons"]?" + "+esc(b["Add ons"]):""}</dd><dt>When</dt><dd>${esc(prettyDay(b.Date))}, ${esc(b.Start)} to ${esc(b.End)}</dd>
     <dt>Total</dt><dd>${esc(b["Total (AED)"])} AED</dd><dt>50% deposit</dt><dd>${esc(b["50% deposit (AED)"])} AED</dd><dt>Phone</dt><dd>${esc(b.Phone)}</dd><dt>Email</dt><dd>${esc(b.Email||"none")}</dd>
-    <dt>Client</dt><dd>${esc(b["Client type"])}</dd><dt>Client’s note</dt><dd>${esc(b.Notes||"none")}</dd><dt>Booked</dt><dd>${esc(b.Created)}</dd></dl>
+    <dt>Client</dt><dd>${esc(b["Client type"])}</dd><dt>Loyalty</dt><dd>${admLoyalty(b)}</dd><dt>Client’s note</dt><dd>${esc(b.Notes||"none")}</dd><dt>Booked</dt><dd>${esc(b.Created)}</dd></dl>
     <div class="field"><label for="dr-tn">Treatment notes (only you see these)</label><textarea id="dr-tn" rows="4" placeholder="What you did, products and colours used, depth, how the skin reacted, what to do next time…">${esc(b["Treatment notes"]||"")}</textarea></div>
     <div class="row-btns" style="margin-top:-6px"><button type="button" class="sbtn" id="drNoteSave">Save notes</button><span class="note" id="drNoteMsg"></span></div>
     <div class="field"><label for="dr-st">Status</label><select id="dr-st">${BOOK_ST.map(s=>`<option ${s===b.Status?"selected":""}>${s}</option>`).join("")}</select></div>
@@ -2368,6 +2403,27 @@ $("#fmNext").onclick=async()=>{
 $("#fmPrev").onclick=()=>{ if(fm.step>0){ fmSave(); fm.step--; $("#fmErr").textContent=""; fmRender(); $("#fmTop").scrollIntoView({behavior:"smooth",block:"start"}); } };
 renderIntake(); fmRender();
 
+
+/* ================= loyalty card ================= */
+function loyText(v){
+  const c=v%10;
+  if(v>0&&c===0) return "Congratulations, that’s 10 visits! Your next treatment is on us.";
+  if(c===5) return "You’ve reached 5 visits! A free gift is waiting for you at your next appointment.";
+  if(c<5) return `Only ${5-c} visit${5-c===1?"":"s"} left before your free gift.`;
+  return `Only ${10-c} visit${10-c===1?"":"s"} left before your free treatment.`;
+}
+function showLoyalty(){
+  const v=Number(CLIENT.visits)||0, c=(v>0&&v%10===0)?10:v%10;
+  $("#loyStamps").innerHTML=Array.from({length:10},(_,i)=>{ const n=i+1, prize=n===5||n===10;
+    return `<span class="${n<=c?"on":""}${prize?" prize":""}" aria-label="Visit ${n}${n<=c?" stamped":""}">${n===5?"Gift":n===10?"Free":n}</span>`; }).join("");
+  $("#loyTitle").textContent=v?"Welcome back":"Welcome";
+  $("#loyMsg").textContent=v?loyText(v):"Your loyalty card starts with your first treatment. Your 5th visit brings a free gift and your 10th a free treatment.";
+  $("#loy").hidden=false;
+}
+$("#loyGo").onclick=()=>{ $("#loy").hidden=true; };
+$("#loy").addEventListener("click",e=>{ if(e.target.id==="loy") $("#loy").hidden=true; });
+$("#loyLink").onclick=e=>{ e.preventDefault(); showLoyalty(); };
+
 /* ================= client login form ================= */
 function clientPrefill(){ const p=CLIENT.phone?"0"+String(CLIENT.phone).replace(/^971/,""):""; if(!p) return; ["vm-phone","cs-phone-n","ct-phone"].forEach(id=>{ const el=$("#"+id); if(el&&!el.value) el.value=p; }); }
 $("#gateForm").addEventListener("submit",async e=>{
@@ -2379,8 +2435,8 @@ $("#gateForm").addEventListener("submit",async e=>{
   try{
     const r=await fetch(CONFIG.apiUrl,{method:"POST",body:JSON.stringify({action:"client_login",phone:normPhone(pv),password:pw})}).then(x=>x.json());
     if(r&&r.ok&&r.token){
-      CLIENT.token=r.token; CLIENT.phone=normPhone(pv);
-      $("#g-pass").value=""; gateHide(); clientPrefill(); route(); loadBusy();
+      CLIENT.token=r.token; CLIENT.phone=normPhone(pv); CLIENT.visits=Number(r.visits)||0;
+      $("#g-pass").value=""; gateHide(); clientPrefill(); route(); loadBusy(); showLoyalty();
     } else $("#gErr").textContent=(r&&r.message)||"That password is not right.";
   }catch(err){ $("#gErr").textContent="Couldn't connect. Please check your internet and try again."; }
   b.disabled=false; b.textContent="Enter";
